@@ -3,6 +3,16 @@ import React, { useState, useEffect } from 'react';
 import { Calculator, Timer, ArrowLeft, Scale, Beaker, CheckSquare, FileText, Play, Pause, RotateCcw, Bell, Download, Info, Zap, Heart, Clock } from 'lucide-react';
 import Link from 'next/link';
 
+interface ChecklistItem {
+  id: number;
+  text: string;
+  completed: boolean;
+}
+
+interface ConversionResult {
+  [key: string]: number;
+}
+
 const ToolkitPage = () => {
   const [activeTab, setActiveTab] = useState('calculator');
   const [darkMode, setDarkMode] = useState(false);
@@ -23,7 +33,7 @@ const ToolkitPage = () => {
   const [converterFrom, setConverterFrom] = useState('gocce');
   
   // Checklist states
-  const [checklist, setChecklist] = useState([
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([
     { id: 1, text: 'Preparare acqua distillata', completed: false },
     { id: 2, text: 'Dosare clorito di sodio', completed: false },
     { id: 3, text: 'Aggiungere HCl goccia a goccia', completed: false },
@@ -47,7 +57,7 @@ const ToolkitPage = () => {
   }, [isTimerRunning, totalSeconds]);
 
   // Calcola dosi CDS
-  const calculateCDSDose = () => {
+  const calculateCDSDose = (): number => {
     let baseDrops = 0;
     switch (protocol) {
       case 'standard':
@@ -64,7 +74,7 @@ const ToolkitPage = () => {
   };
 
   // Calcola dosi Blu di Metilene
-  const calculateBlueDose = () => {
+  const calculateBlueDose = (): number => {
     let baseMg = 0;
     switch (protocol) {
       case 'standard':
@@ -81,14 +91,14 @@ const ToolkitPage = () => {
   };
 
   // Convertitore unità
-  const convertUnits = () => {
-    const conversions = {
+  const convertUnits = (): ConversionResult => {
+    const conversions: { [key: string]: { [key: string]: number } } = {
       gocce: { ml: 0.05, mg: 1 },
       ml: { gocce: 20, mg: 20 },
       mg: { gocce: 1, ml: 0.05 }
     };
     
-    const results = {};
+    const results: ConversionResult = {};
     Object.keys(conversions).forEach(unit => {
       if (unit !== converterFrom) {
         results[unit] = Math.round(converterValue * conversions[converterFrom][unit] * 100) / 100;
@@ -117,7 +127,7 @@ const ToolkitPage = () => {
   };
 
   // Format time
-  const formatTime = (seconds: number) => {
+  const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
