@@ -1,3 +1,4 @@
+"use client"
 import React, { useState } from 'react';
 import { Search, Heart, Calendar, FileText, MessageCircle, ChevronRight, Menu, X, Sun, Moon, Shield, Users, Zap } from 'lucide-react';
 
@@ -86,8 +87,6 @@ const HomePage = () => {
                 <span>Chiedi all'AI</span>
               </button>
             </div>
-
-
           </div>
         </div>
       </section>
