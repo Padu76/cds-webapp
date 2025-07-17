@@ -1,6 +1,7 @@
 "use client"
 import React, { useState } from 'react';
 import { Search, Heart, Calendar, FileText, MessageCircle, ChevronRight, Menu, X, Sun, Moon, Shield, Users, Zap } from 'lucide-react';
+import Link from 'next/link';
 
 const HomePage = () => {
   const [darkMode, setDarkMode] = useState(false);
@@ -15,21 +16,21 @@ const HomePage = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Logo */}
-            <div className="flex items-center space-x-2">
+            <Link href="/" className="flex items-center space-x-2">
               <div className="w-8 h-8 bg-gradient-to-r from-emerald-500 to-cyan-500 rounded-lg flex items-center justify-center">
                 <Heart className="w-5 h-5 text-white" />
               </div>
               <span className="text-xl font-bold bg-gradient-to-r from-emerald-600 to-cyan-600 bg-clip-text text-transparent">
                 CDS Wellness
               </span>
-            </div>
+            </Link>
 
             {/* Desktop Navigation */}
             <nav className="hidden md:flex items-center space-x-8">
-              <a href="#" className="text-gray-600 hover:text-emerald-600 transition-colors">Protocolli</a>
-              <a href="#" className="text-gray-600 hover:text-emerald-600 transition-colors">Sintomi</a>
-              <a href="#" className="text-gray-600 hover:text-emerald-600 transition-colors">Diario</a>
-              <a href="#" className="text-gray-600 hover:text-emerald-600 transition-colors">Toolkit</a>
+              <Link href="/protocolli" className="text-gray-600 hover:text-emerald-600 transition-colors">Protocolli</Link>
+              <Link href="/sintomi" className="text-gray-600 hover:text-emerald-600 transition-colors">Sintomi</Link>
+              <Link href="/diario" className="text-gray-600 hover:text-emerald-600 transition-colors">Diario</Link>
+              <Link href="/toolkit" className="text-gray-600 hover:text-emerald-600 transition-colors">Toolkit</Link>
               <button
                 onClick={toggleDarkMode}
                 className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -52,10 +53,10 @@ const HomePage = () => {
         {mobileMenuOpen && (
           <div className={`md:hidden ${darkMode ? 'bg-gray-900' : 'bg-white'} border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
             <div className="px-4 py-2 space-y-1">
-              <a href="#" className="block px-3 py-2 text-gray-600 hover:text-emerald-600">Protocolli</a>
-              <a href="#" className="block px-3 py-2 text-gray-600 hover:text-emerald-600">Sintomi</a>
-              <a href="#" className="block px-3 py-2 text-gray-600 hover:text-emerald-600">Diario</a>
-              <a href="#" className="block px-3 py-2 text-gray-600 hover:text-emerald-600">Toolkit</a>
+              <Link href="/protocolli" className="block px-3 py-2 text-gray-600 hover:text-emerald-600">Protocolli</Link>
+              <Link href="/sintomi" className="block px-3 py-2 text-gray-600 hover:text-emerald-600">Sintomi</Link>
+              <Link href="/diario" className="block px-3 py-2 text-gray-600 hover:text-emerald-600">Diario</Link>
+              <Link href="/toolkit" className="block px-3 py-2 text-gray-600 hover:text-emerald-600">Toolkit</Link>
             </div>
           </div>
         )}
@@ -78,14 +79,14 @@ const HomePage = () => {
             
             {/* CTA Buttons */}
             <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-              <button className="bg-gradient-to-r from-emerald-500 to-cyan-500 text-white px-8 py-4 rounded-xl font-semibold hover:from-emerald-600 hover:to-cyan-600 transition-all duration-300 shadow-lg hover:shadow-xl flex items-center justify-center space-x-2">
+              <Link href="/sintomi" className="bg-gradient-to-r from-emerald-500 to-cyan-500 text-white px-8 py-4 rounded-xl font-semibold hover:from-emerald-600 hover:to-cyan-600 transition-all duration-300 shadow-lg hover:shadow-xl flex items-center justify-center space-x-2">
                 <Search className="w-5 h-5" />
                 <span>Cerca per Sintomo</span>
-              </button>
-              <button className="border-2 border-emerald-500 text-emerald-600 px-8 py-4 rounded-xl font-semibold hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all duration-300 flex items-center justify-center space-x-2">
+              </Link>
+              <Link href="/chat" className="border-2 border-emerald-500 text-emerald-600 px-8 py-4 rounded-xl font-semibold hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all duration-300 flex items-center justify-center space-x-2">
                 <MessageCircle className="w-5 h-5" />
                 <span>Chiedi all'AI</span>
-              </button>
+              </Link>
             </div>
           </div>
         </div>
@@ -140,7 +141,7 @@ const HomePage = () => {
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {/* Card 1 */}
-            <div className={`p-6 rounded-xl border transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer ${darkMode ? 'bg-gray-800 border-gray-700 hover:border-emerald-500' : 'bg-white border-gray-200 hover:border-emerald-300'}`}>
+            <Link href="/sintomi" className={`p-6 rounded-xl border transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer ${darkMode ? 'bg-gray-800 border-gray-700 hover:border-emerald-500' : 'bg-white border-gray-200 hover:border-emerald-300'}`}>
               <div className="w-12 h-12 bg-gradient-to-r from-emerald-500 to-cyan-500 rounded-lg flex items-center justify-center mb-4">
                 <Search className="w-6 h-6 text-white" />
               </div>
@@ -149,10 +150,10 @@ const HomePage = () => {
               <div className="flex items-center text-emerald-600 text-sm font-medium">
                 Inizia <ChevronRight className="w-4 h-4 ml-1" />
               </div>
-            </div>
+            </Link>
 
             {/* Card 2 */}
-            <div className={`p-6 rounded-xl border transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer ${darkMode ? 'bg-gray-800 border-gray-700 hover:border-emerald-500' : 'bg-white border-gray-200 hover:border-emerald-300'}`}>
+            <Link href="/chat" className={`p-6 rounded-xl border transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer ${darkMode ? 'bg-gray-800 border-gray-700 hover:border-emerald-500' : 'bg-white border-gray-200 hover:border-emerald-300'}`}>
               <div className="w-12 h-12 bg-gradient-to-r from-cyan-500 to-emerald-500 rounded-lg flex items-center justify-center mb-4">
                 <MessageCircle className="w-6 h-6 text-white" />
               </div>
@@ -161,10 +162,10 @@ const HomePage = () => {
               <div className="flex items-center text-emerald-600 text-sm font-medium">
                 Chatta <ChevronRight className="w-4 h-4 ml-1" />
               </div>
-            </div>
+            </Link>
 
             {/* Card 3 */}
-            <div className={`p-6 rounded-xl border transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer ${darkMode ? 'bg-gray-800 border-gray-700 hover:border-emerald-500' : 'bg-white border-gray-200 hover:border-emerald-300'}`}>
+            <Link href="/diario" className={`p-6 rounded-xl border transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer ${darkMode ? 'bg-gray-800 border-gray-700 hover:border-emerald-500' : 'bg-white border-gray-200 hover:border-emerald-300'}`}>
               <div className="w-12 h-12 bg-gradient-to-r from-emerald-500 to-cyan-500 rounded-lg flex items-center justify-center mb-4">
                 <Calendar className="w-6 h-6 text-white" />
               </div>
@@ -173,10 +174,10 @@ const HomePage = () => {
               <div className="flex items-center text-emerald-600 text-sm font-medium">
                 Apri <ChevronRight className="w-4 h-4 ml-1" />
               </div>
-            </div>
+            </Link>
 
             {/* Card 4 */}
-            <div className={`p-6 rounded-xl border transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer ${darkMode ? 'bg-gray-800 border-gray-700 hover:border-emerald-500' : 'bg-white border-gray-200 hover:border-emerald-300'}`}>
+            <Link href="/protocolli" className={`p-6 rounded-xl border transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer ${darkMode ? 'bg-gray-800 border-gray-700 hover:border-emerald-500' : 'bg-white border-gray-200 hover:border-emerald-300'}`}>
               <div className="w-12 h-12 bg-gradient-to-r from-cyan-500 to-emerald-500 rounded-lg flex items-center justify-center mb-4">
                 <FileText className="w-6 h-6 text-white" />
               </div>
@@ -185,7 +186,7 @@ const HomePage = () => {
               <div className="flex items-center text-emerald-600 text-sm font-medium">
                 Sfoglia <ChevronRight className="w-4 h-4 ml-1" />
               </div>
-            </div>
+            </Link>
           </div>
         </div>
       </section>
