@@ -1,111 +1,39 @@
 "use client"
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, ArrowLeft, ExternalLink, Star, Download, Eye, Heart, Zap, Shield } from 'lucide-react';
+import { Search, Filter, ArrowLeft, ExternalLink, Star, Download, Eye, Heart, Zap, Shield, Loader2, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
-
-interface Protocol {
-  id: string;
-  nome: string;
-  sostanza: 'CDS' | 'Blu di Metilene' | 'Entrambi';
-  categoria: string;
-  descrizione: string;
-  dosaggio: string;
-  efficacia: number;
-  note: string;
-  pdfUrl: string;
-  sintomiCorrelati: string[];
-}
+import { getCachedProtocolli, type Protocollo } from '@/lib/airtable';
 
 const ProtocolliPage = () => {
-  const [protocols, setProtocols] = useState<Protocol[]>([]);
-  const [filteredProtocols, setFilteredProtocols] = useState<Protocol[]>([]);
+  const [protocols, setProtocols] = useState<Protocollo[]>([]);
+  const [filteredProtocols, setFilteredProtocols] = useState<Protocollo[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSubstance, setSelectedSubstance] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [minEfficacia, setMinEfficacia] = useState(0);
   const [darkMode, setDarkMode] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Dati mock - da sostituire con chiamate API Airtable
-  const mockProtocols: Protocol[] = [
-    {
-      id: '1',
-      nome: 'Protocollo A - CDS',
-      sostanza: 'CDS',
-      categoria: 'Digestivo',
-      descrizione: 'Protocollo per problemi digestivi con CDS. Efficace per gastrite, acidità e disturbi intestinali.',
-      dosaggio: '3 gocce attivate in 100ml acqua, 3 volte al giorno a stomaco vuoto',
-      efficacia: 8,
-      note: 'Assumere lontano dai pasti, attendere 2 ore tra le dosi',
-      pdfUrl: 'https://drive.google.com/file/d/esempio1',
-      sintomiCorrelati: ['Gastrite', 'Acidità', 'Nausea', 'Colite']
-    },
-    {
-      id: '2',
-      nome: 'Protocollo B - CDS',
-      sostanza: 'CDS',
-      categoria: 'Respiratorio',
-      descrizione: 'Trattamento per infezioni respiratorie e problemi polmonari con CDS.',
-      dosaggio: '5 gocce attivate in 200ml acqua, 2 volte al giorno',
-      efficacia: 9,
-      note: 'Evitare durante gravidanza, consultare medico se sintomi persistono',
-      pdfUrl: 'https://drive.google.com/file/d/esempio2',
-      sintomiCorrelati: ['Tosse', 'Bronchite', 'Sinusite', 'Mal di gola']
-    },
-    {
-      id: '3',
-      nome: 'Protocollo C - Blu di Metilene',
-      sostanza: 'Blu di Metilene',
-      categoria: 'Neurologico',
-      descrizione: 'Protocollo per supporto cognitivo e funzioni cerebrali con Blu di Metilene.',
-      dosaggio: '1 goccia per 10kg peso corporeo in 250ml acqua, 1 volta al giorno',
-      efficacia: 7,
-      note: 'Iniziare con dosi minime, aumentare gradualmente. Può colorare urine di blu',
-      pdfUrl: 'https://drive.google.com/file/d/esempio3',
-      sintomiCorrelati: ['Nebbia mentale', 'Perdita memoria', 'Concentrazione', 'Alzheimer']
-    },
-    {
-      id: '4',
-      nome: 'Protocollo D - CDS',
-      sostanza: 'CDS',
-      categoria: 'Dermatologico',
-      descrizione: 'Trattamento topico per problemi cutanei con CDS diluito.',
-      dosaggio: '10 gocce attivate in 50ml acqua distillata, applicare 2 volte al giorno',
-      efficacia: 8,
-      note: 'Solo uso esterno, testare su piccola area prima dell\'uso',
-      pdfUrl: 'https://drive.google.com/file/d/esempio4',
-      sintomiCorrelati: ['Eczema', 'Psoriasi', 'Acne', 'Dermatite']
-    },
-    {
-      id: '5',
-      nome: 'Protocollo E - CDS',
-      sostanza: 'CDS',
-      categoria: 'Detox',
-      descrizione: 'Protocollo di disintossicazione generale con CDS per purificare l\'organismo.',
-      dosaggio: '1 goccia attivata per kg peso corporeo in 1L acqua, da bere nell\'arco della giornata',
-      efficacia: 9,
-      note: 'Bere lontano dai pasti, aumentare gradualmente la dose',
-      pdfUrl: 'https://drive.google.com/file/d/esempio5',
-      sintomiCorrelati: ['Stanchezza', 'Intossicazione', 'Metalli pesanti', 'Candida']
-    },
-    {
-      id: '6',
-      nome: 'Protocollo F - Blu di Metilene',
-      sostanza: 'Blu di Metilene',
-      categoria: 'Cardiovascolare',
-      descrizione: 'Supporto cardiovascolare con Blu di Metilene per migliorare circolazione.',
-      dosaggio: '0.5mg per kg peso corporeo in 200ml acqua, 2 volte al giorno',
-      efficacia: 6,
-      note: 'Monitorare pressione arteriosa, non superare dosi consigliate',
-      pdfUrl: 'https://drive.google.com/file/d/esempio6',
-      sintomiCorrelati: ['Pressione alta', 'Circolazione', 'Varici', 'Insufficienza venosa']
-    }
-  ];
-
+  // Carica dati da Airtable
   useEffect(() => {
-    // Simula caricamento dati da Airtable
-    setProtocols(mockProtocols);
-    setFilteredProtocols(mockProtocols);
+    const loadProtocols = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await getCachedProtocolli();
+        setProtocols(data);
+        setFilteredProtocols(data);
+      } catch (err) {
+        console.error('Errore nel caricamento protocolli:', err);
+        setError(err instanceof Error ? err.message : 'Errore nel caricamento dei dati');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProtocols();
   }, []);
 
   useEffect(() => {
@@ -162,8 +90,103 @@ const ProtocolliPage = () => {
     ));
   };
 
-  // Ottieni categorie uniche dai dati - FIX TypeScript
+  // Ottieni categorie uniche dai dati
   const categories = Array.from(new Set(protocols.map(p => p.categoria))).filter(Boolean);
+
+  // Retry function
+  const retryLoad = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const data = await getCachedProtocolli();
+      setProtocols(data);
+      setFilteredProtocols(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Errore nel caricamento dei dati');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Loading State
+  if (loading) {
+    return (
+      <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+        {/* Header */}
+        <header className={`sticky top-0 z-10 backdrop-blur-md transition-all duration-300 ${darkMode ? 'bg-gray-900/80' : 'bg-white/80'} border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+          <div className="max-w-7xl mx-auto px-4 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <Link href="/" className="flex items-center space-x-2 text-gray-600 hover:text-emerald-600 transition-colors">
+                  <ArrowLeft className="w-5 h-5" />
+                  <span>Torna alla Home</span>
+                </Link>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Heart className="w-6 h-6 text-emerald-600" />
+                <h1 className="text-xl font-bold bg-gradient-to-r from-emerald-600 to-cyan-600 bg-clip-text text-transparent">
+                  Protocolli
+                </h1>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Loading Content */}
+        <div className="max-w-7xl mx-auto px-4 py-12">
+          <div className="flex flex-col items-center justify-center min-h-[400px]">
+            <Loader2 className="w-12 h-12 animate-spin text-emerald-600 mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Caricamento protocolli...</h3>
+            <p className="text-gray-600 dark:text-gray-400">Connessione ad Airtable in corso</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error State
+  if (error) {
+    return (
+      <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+        {/* Header */}
+        <header className={`sticky top-0 z-10 backdrop-blur-md transition-all duration-300 ${darkMode ? 'bg-gray-900/80' : 'bg-white/80'} border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+          <div className="max-w-7xl mx-auto px-4 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <Link href="/" className="flex items-center space-x-2 text-gray-600 hover:text-emerald-600 transition-colors">
+                  <ArrowLeft className="w-5 h-5" />
+                  <span>Torna alla Home</span>
+                </Link>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Heart className="w-6 h-6 text-emerald-600" />
+                <h1 className="text-xl font-bold bg-gradient-to-r from-emerald-600 to-cyan-600 bg-clip-text text-transparent">
+                  Protocolli
+                </h1>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Error Content */}
+        <div className="max-w-7xl mx-auto px-4 py-12">
+          <div className="flex flex-col items-center justify-center min-h-[400px]">
+            <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Errore nel caricamento</h3>
+            <p className="text-gray-600 dark:text-gray-400 text-center mb-4">
+              {error}
+            </p>
+            <button
+              onClick={retryLoad}
+              className="bg-emerald-600 text-white px-6 py-2 rounded-lg hover:bg-emerald-700 transition-colors"
+            >
+              Riprova
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
@@ -182,6 +205,9 @@ const ProtocolliPage = () => {
               <h1 className="text-xl font-bold bg-gradient-to-r from-emerald-600 to-cyan-600 bg-clip-text text-transparent">
                 Protocolli
               </h1>
+            </div>
+            <div className="text-sm text-gray-500">
+              {protocols.length} protocolli da Airtable
             </div>
           </div>
         </div>
@@ -338,16 +364,18 @@ const ProtocolliPage = () => {
                 </div>
 
                 {/* Sintomi Correlati */}
-                <div className="mb-4">
-                  <h4 className="text-sm font-semibold mb-2">Sintomi trattati:</h4>
-                  <div className="flex flex-wrap gap-1">
-                    {protocol.sintomiCorrelati.map((sintomo, index) => (
-                      <span key={index} className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full">
-                        {sintomo}
-                      </span>
-                    ))}
+                {protocol.sintomiCorrelati.length > 0 && (
+                  <div className="mb-4">
+                    <h4 className="text-sm font-semibold mb-2">Sintomi trattati:</h4>
+                    <div className="flex flex-wrap gap-1">
+                      {protocol.sintomiCorrelati.map((sintomo, index) => (
+                        <span key={index} className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full">
+                          {sintomo}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Note */}
                 {protocol.note && (
@@ -366,15 +394,17 @@ const ProtocolliPage = () => {
               {/* Actions */}
               <div className="px-6 pb-6 pt-2 border-t border-gray-200 dark:border-gray-700">
                 <div className="flex space-x-3">
-                  <a
-                    href={protocol.pdfUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 bg-gradient-to-r from-emerald-500 to-cyan-500 text-white px-4 py-2 rounded-lg hover:from-emerald-600 hover:to-cyan-600 transition-all duration-300 shadow-md hover:shadow-lg flex items-center justify-center space-x-2 text-sm"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span>Scarica PDF</span>
-                  </a>
+                  {protocol.pdfUrl && (
+                    <a
+                      href={protocol.pdfUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 bg-gradient-to-r from-emerald-500 to-cyan-500 text-white px-4 py-2 rounded-lg hover:from-emerald-600 hover:to-cyan-600 transition-all duration-300 shadow-md hover:shadow-lg flex items-center justify-center space-x-2 text-sm"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Scarica PDF</span>
+                    </a>
+                  )}
                   <button className="px-4 py-2 border border-emerald-500 text-emerald-600 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors flex items-center space-x-1 text-sm">
                     <Eye className="w-4 h-4" />
                     <span>Dettagli</span>
@@ -386,7 +416,7 @@ const ProtocolliPage = () => {
         </div>
 
         {/* No Results */}
-        {filteredProtocols.length === 0 && (
+        {filteredProtocols.length === 0 && protocols.length > 0 && (
           <div className="text-center py-12">
             <div className="w-24 h-24 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
               <Search className="w-12 h-12 text-gray-400" />
@@ -406,6 +436,19 @@ const ProtocolliPage = () => {
             >
               Reset Filtri
             </button>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {protocols.length === 0 && !loading && !error && (
+          <div className="text-center py-12">
+            <div className="w-24 h-24 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Heart className="w-12 h-12 text-gray-400" />
+            </div>
+            <h3 className="text-lg font-semibold mb-2">Nessun protocollo disponibile</h3>
+            <p className="text-gray-600 dark:text-gray-400">
+              I protocolli verranno visualizzati qui una volta caricati nel database
+            </p>
           </div>
         )}
       </div>
