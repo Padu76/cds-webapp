@@ -2,47 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-  }
-  
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
-@layer base {
-  body {
-    @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
-  }
-
-  html {
-    scroll-behavior: smooth;
-  }
-}
-
-@layer components {
-  .gradient-emerald-cyan {
-    @apply bg-gradient-to-r from-emerald-500 to-cyan-500;
-  }
-  
-  .gradient-text {
-    @apply bg-gradient-to-r from-emerald-600 to-cyan-600 bg-clip-text text-transparent;
-  }
-  
-  .card-hover {
-    @apply transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer;
-  }
-  
-  .btn-primary {
-    @apply bg-gradient-to-r from-emerald-500 to-cyan-500 text-white px-8 py-4 rounded-xl font-semibold hover:from-emerald-600 hover:to-cyan-600 transition-all duration-300 shadow-lg hover:shadow-xl;
-  }
-  
-  .btn-secondary {
-    @apply border-2 border-emerald-500 text-emerald-600 px-8 py-4 rounded-xl font-semibold hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all duration-300;
-  }
+body {
+  font-feature-settings: "rlig" 1, "calt" 1;
 }
