@@ -457,11 +457,15 @@ class EnhancedCache {
 
 export const cache = new EnhancedCache();
 
-// Type union per tutti i possibili tipi di dati
-type AllDataTypes = Protocollo[] | Sintomo[] | Documentazione[] | Testimonianza[] | RicercaScientifica[] | FAQ[] | Dosaggio[];
-
-// Funzioni con caching
-export async function getCachedData(type: string): Promise<AllDataTypes> {
+// Funzioni con caching specifiche per tipo
+export async function getCachedData(type: 'protocolli'): Promise<Protocollo[]>;
+export async function getCachedData(type: 'sintomi'): Promise<Sintomo[]>;
+export async function getCachedData(type: 'documentazione'): Promise<Documentazione[]>;
+export async function getCachedData(type: 'testimonianze'): Promise<Testimonianza[]>;
+export async function getCachedData(type: 'ricerche'): Promise<RicercaScientifica[]>;
+export async function getCachedData(type: 'faq'): Promise<FAQ[]>;
+export async function getCachedData(type: 'dosaggi'): Promise<Dosaggio[]>;
+export async function getCachedData(type: string): Promise<any[]> {
   const cacheKey = `data-${type}`;
   const cached = cache.get(cacheKey);
   
@@ -469,7 +473,7 @@ export async function getCachedData(type: string): Promise<AllDataTypes> {
     return cached;
   }
   
-  let data: AllDataTypes = [];
+  let data: any[] = [];
   
   switch (type) {
     case 'protocolli':
