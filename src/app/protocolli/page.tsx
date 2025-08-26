@@ -145,7 +145,11 @@ const ProtocolliPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Tutti');
   const [selectedEfficacy, setSelectedEfficacy] = useState('Tutti');
-  const [connectionStatus, setConnectionStatus] = useState({ connected: false, errors: [] });
+  const [connectionStatus, setConnectionStatus] = useState<{
+    connected: boolean;
+    tablesAvailable: string[];
+    errors: string[];
+  }>({ connected: false, tablesAvailable: [], errors: [] });
 
   // Carica protocolli da Airtable
   useEffect(() => {
