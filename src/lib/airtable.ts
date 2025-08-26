@@ -457,8 +457,11 @@ class EnhancedCache {
 
 export const cache = new EnhancedCache();
 
+// Type union per tutti i possibili tipi di dati
+type AllDataTypes = Protocollo[] | Sintomo[] | Documentazione[] | Testimonianza[] | RicercaScientifica[] | FAQ[] | Dosaggio[];
+
 // Funzioni con caching
-export async function getCachedData(type: string): Promise<any[]> {
+export async function getCachedData(type: string): Promise<AllDataTypes> {
   const cacheKey = `data-${type}`;
   const cached = cache.get(cacheKey);
   
@@ -466,7 +469,8 @@ export async function getCachedData(type: string): Promise<any[]> {
     return cached;
   }
   
-  let data;
+  let data: AllDataTypes = [];
+  
   switch (type) {
     case 'protocolli':
       data = await getProtocolli();
@@ -511,7 +515,7 @@ export function formatDataForAI(data: {
   
   // Protocolli
   if (data.protocolli.length > 0) {
-    formattedData += "📋 PROTOCOLLI DISPONIBILI:\n";
+    formattedData += "PROTOCOLLI DISPONIBILI:\n";
     data.protocolli.forEach((p, index) => {
       formattedData += `${index + 1}. ${p.nome}\n`;
       formattedData += `   • Descrizione: ${p.descrizione}\n`;
@@ -524,7 +528,7 @@ export function formatDataForAI(data: {
   
   // Sintomi correlati
   if (data.sintomi.length > 0) {
-    formattedData += "🔍 SINTOMI E CORRELAZIONI:\n";
+    formattedData += "SINTOMI E CORRELAZIONI:\n";
     data.sintomi.forEach((s, index) => {
       formattedData += `${index + 1}. ${s.nome} (${s.categoria} - Urgenza: ${s.urgenza})\n`;
       formattedData += `   • ${s.descrizione}\n`;
@@ -537,7 +541,7 @@ export function formatDataForAI(data: {
   
   // FAQ pertinenti
   if (data.faq.length > 0) {
-    formattedData += "❓ FAQ RILEVANTI:\n";
+    formattedData += "FAQ RILEVANTI:\n";
     data.faq.slice(0, 3).forEach((f, index) => {
       formattedData += `${index + 1}. ${f.domanda}\n`;
       formattedData += `   Risposta: ${f.risposta}\n\n`;
@@ -546,7 +550,7 @@ export function formatDataForAI(data: {
   
   // Testimonianze
   if (data.testimonianze.length > 0) {
-    formattedData += "💬 TESTIMONIANZE CORRELATE:\n";
+    formattedData += "TESTIMONIANZE CORRELATE:\n";
     data.testimonianze.slice(0, 2).forEach((t, index) => {
       formattedData += `${index + 1}. ${t.patologia} - ${t.trattamentoUsato}\n`;
       formattedData += `   • Risultati: ${t.risultati}\n`;
@@ -556,7 +560,7 @@ export function formatDataForAI(data: {
   
   // Ricerche scientifiche
   if (data.ricerche.length > 0) {
-    formattedData += "🧪 EVIDENZE SCIENTIFICHE:\n";
+    formattedData += "EVIDENZE SCIENTIFICHE:\n";
     data.ricerche.slice(0, 2).forEach((r, index) => {
       formattedData += `${index + 1}. ${r.titoloStudio} (${r.anno})\n`;
       formattedData += `   • Sostanza: ${r.sostanza}\n`;
@@ -566,7 +570,7 @@ export function formatDataForAI(data: {
   
   // Dosaggi specifici
   if (data.dosaggi.length > 0) {
-    formattedData += "⚖️ DOSAGGI CALCOLATI:\n";
+    formattedData += "DOSAGGI CALCOLATI:\n";
     data.dosaggi.slice(0, 2).forEach((d, index) => {
       formattedData += `${index + 1}. ${d.patologia}\n`;
       formattedData += `   • CDS: ${d.dosaggioCds}\n`;
@@ -578,7 +582,7 @@ export function formatDataForAI(data: {
   
   // Documentazione
   if (data.documentazione.length > 0) {
-    formattedData += "📚 DOCUMENTAZIONE:\n";
+    formattedData += "DOCUMENTAZIONE:\n";
     data.documentazione.slice(0, 2).forEach((doc, index) => {
       formattedData += `${index + 1}. ${doc.titolo} (${doc.categoria})\n`;
       formattedData += `   • ${doc.contenuto.substring(0, 150)}...\n\n`;
