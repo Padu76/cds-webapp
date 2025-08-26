@@ -4,7 +4,7 @@ import {
   Send, Bot, User, Loader2, Search, FileText, Heart, ArrowLeft, 
   AlertCircle, RefreshCw, Database, Activity, BookOpen, 
   MessageCircle, FlaskConical, Calculator, CheckCircle2,
-  AlertTriangle, Moon, Sun, File, Folder, Link
+  AlertTriangle, Moon, Sun, File, Folder, ExternalLink
 } from 'lucide-react';
 import Link from 'next/link';
 import { 
@@ -619,7 +619,7 @@ const ChatAI = () => {
                                     rel="noopener noreferrer"
                                     className="flex items-center space-x-2 text-xs text-blue-600 hover:text-blue-800 hover:underline"
                                   >
-                                    <Link className="w-3 h-3" />
+                                    <ExternalLink className="w-3 h-3" />
                                     <span>{doc.document.name}</span>
                                   </a>
                                 ))}
