@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { 
   ArrowLeft, AlertTriangle, Clock, Thermometer, Beaker, 
-  Droplets, Shield, CheckCircle, Eye, Gloves, Wind,
+  Droplets, Shield, CheckCircle, Eye, Hand, Wind,
   Timer, Scale, FlaskConical, FileText, Download,
   ChevronRight, ChevronDown, Play, Pause
 } from 'lucide-react';
@@ -291,7 +291,7 @@ const PreparazioneCDS = () => {
                           <div className="bg-white p-4 rounded-lg border">
                             <ul className="space-y-2">
                               <li className="flex items-center space-x-2">
-                                <Gloves className="w-4 h-4 text-blue-600" />
+                                <Hand className="w-4 h-4 text-blue-600" />
                                 <span>Indossa guanti in nitrile</span>
                               </li>
                               <li className="flex items-center space-x-2">
