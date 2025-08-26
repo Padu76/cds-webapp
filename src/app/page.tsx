@@ -1,6 +1,5 @@
 "use client"
 import React, { useState } from 'react';
-import Link from 'next/link';
 import { 
   Bot, FileText, Activity, Calculator, MessageCircle, 
   FlaskConical, BookOpen, Search, BarChart3, Download,
@@ -70,18 +69,18 @@ export default function Home() {
             
             {/* Desktop Navigation */}
             <nav className="hidden lg:flex items-center space-x-8">
-              <Link href="/chat" className="text-gray-700 hover:text-emerald-600 transition-colors font-medium">
+              <a href="/chat" className="text-gray-700 hover:text-emerald-600 transition-colors font-medium">
                 Chat AI
-              </Link>
-              <Link href="/documentazione" className="text-gray-700 hover:text-emerald-600 transition-colors font-medium">
+              </a>
+              <a href="/documentazione" className="text-gray-700 hover:text-emerald-600 transition-colors font-medium">
                 Documentazione
-              </Link>
-              <Link href="/preparazione-cds" className="text-gray-700 hover:text-emerald-600 transition-colors font-medium">
+              </a>
+              <a href="/preparazione-cds" className="text-gray-700 hover:text-emerald-600 transition-colors font-medium">
                 Preparazione CDS
-              </Link>
-              <Link href="/protocolli" className="text-gray-700 hover:text-emerald-600 transition-colors font-medium">
+              </a>
+              <a href="/protocolli" className="text-gray-700 hover:text-emerald-600 transition-colors font-medium">
                 Protocolli
-              </Link>
+              </a>
             </nav>
 
             {/* Mobile Menu Button */}
@@ -97,18 +96,18 @@ export default function Home() {
           {isMenuOpen && (
             <div className="lg:hidden mt-4 pb-4 border-t border-gray-200 pt-4">
               <nav className="flex flex-col space-y-3">
-                <Link href="/chat" className="text-gray-700 hover:text-emerald-600 transition-colors font-medium py-2">
+                <a href="/chat" className="text-gray-700 hover:text-emerald-600 transition-colors font-medium py-2">
                   Chat AI
-                </Link>
-                <Link href="/documentazione" className="text-gray-700 hover:text-emerald-600 transition-colors font-medium py-2">
+                </a>
+                <a href="/documentazione" className="text-gray-700 hover:text-emerald-600 transition-colors font-medium py-2">
                   Documentazione
-                </Link>
-                <Link href="/preparazione-cds" className="text-gray-700 hover:text-emerald-600 transition-colors font-medium py-2">
+                </a>
+                <a href="/preparazione-cds" className="text-gray-700 hover:text-emerald-600 transition-colors font-medium py-2">
                   Preparazione CDS
-                </Link>
-                <Link href="/protocolli" className="text-gray-700 hover:text-emerald-600 transition-colors font-medium py-2">
+                </a>
+                <a href="/protocolli" className="text-gray-700 hover:text-emerald-600 transition-colors font-medium py-2">
                   Protocolli
-                </Link>
+                </a>
               </nav>
             </div>
           )}
@@ -137,23 +136,23 @@ export default function Home() {
 
           {/* CTA Buttons - Mobile Responsive */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-            <Link
+            <a
               href="/chat"
               className="group bg-gradient-to-r from-emerald-500 to-cyan-500 text-white px-8 py-4 rounded-xl font-semibold text-lg shadow-xl hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300 flex items-center justify-center space-x-3"
             >
               <MessageCircle className="w-6 h-6" />
               <span>Inizia Chat AI</span>
               <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-            </Link>
+            </a>
             
-            <Link
+            <a
               href="/documentazione"
               className="group bg-white text-gray-700 px-8 py-4 rounded-xl font-semibold text-lg border-2 border-gray-200 hover:border-emerald-500 hover:text-emerald-600 transition-all duration-300 flex items-center justify-center space-x-3 shadow-lg hover:shadow-xl"
             >
               <BookOpen className="w-6 h-6" />
               <span>Esplora Documenti</span>
               <ExternalLink className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-            </Link>
+            </a>
           </div>
         </div>
 
@@ -308,13 +307,13 @@ export default function Home() {
               <p className="text-gray-600 leading-relaxed mb-6">
                 {feature.description}
               </p>
-              <Link 
+              <a 
                 href={feature.link} 
                 className={`inline-flex items-center space-x-2 text-${feature.color}-600 hover:text-${feature.color}-700 font-semibold group-hover:translate-x-2 transition-all`}
               >
                 <span>{feature.linkText}</span>
                 <ChevronRight className="w-4 h-4" />
-              </Link>
+              </a>
             </div>
           ))}
         </div>
@@ -398,20 +397,20 @@ export default function Home() {
             Chiedi qualsiasi domanda su CDS e Blu di Metilene. L'AI consulterà automaticamente tutti i database per risposte precise.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link
+            <a
               href="/chat"
               className="bg-white text-emerald-600 px-8 py-4 rounded-xl font-semibold text-lg hover:bg-gray-50 transition-colors shadow-lg flex items-center justify-center space-x-3 transform hover:scale-105 duration-300"
             >
               <MessageCircle className="w-6 h-6" />
               <span>Inizia Chat Gratuita</span>
-            </Link>
-            <Link
+            </a>
+            <a
               href="/preparazione-cds"
               className="bg-transparent border-2 border-white text-white px-8 py-4 rounded-xl font-semibold text-lg hover:bg-white hover:text-emerald-600 transition-colors flex items-center justify-center space-x-3 transform hover:scale-105 duration-300"
             >
               <Beaker className="w-6 h-6" />
               <span>Guida Preparazione</span>
-            </Link>
+            </a>
           </div>
         </div>
       </section>
@@ -485,18 +484,18 @@ export default function Home() {
           </div>
 
           <div className="flex space-x-4">
-            <Link
+            <a
               href="/preparazione-cds"
               className="flex-1 bg-emerald-500 text-white py-3 px-6 rounded-lg font-semibold text-center hover:bg-emerald-600 transition-colors"
             >
               Guida Preparazione
-            </Link>
-            <Link
+            </a>
+            <a
               href="/chat"
               className="flex-1 bg-gray-100 text-gray-700 py-3 px-6 rounded-lg font-semibold text-center hover:bg-gray-200 transition-colors"
             >
               Chiedi all'AI
-            </Link>
+            </a>
           </div>
         </div>
       </Modal>
@@ -587,18 +586,18 @@ export default function Home() {
           </div>
 
           <div className="flex space-x-4">
-            <Link
+            <a
               href="/protocolli"
               className="flex-1 bg-blue-500 text-white py-3 px-6 rounded-lg font-semibold text-center hover:bg-blue-600 transition-colors"
             >
               Vedi Protocolli
-            </Link>
-            <Link
+            </a>
+            <a
               href="/chat"
               className="flex-1 bg-gray-100 text-gray-700 py-3 px-6 rounded-lg font-semibold text-center hover:bg-gray-200 transition-colors"
             >
               Chiedi all'AI
-            </Link>
+            </a>
           </div>
         </div>
       </Modal>
@@ -626,19 +625,19 @@ export default function Home() {
             <div>
               <h4 className="font-semibold mb-4 text-lg">Funzionalità</h4>
               <ul className="space-y-3 text-gray-400">
-                <li><Link href="/chat" className="hover:text-white transition-colors">Chat AI</Link></li>
-                <li><Link href="/documentazione" className="hover:text-white transition-colors">Documentazione</Link></li>
-                <li><Link href="/preparazione-cds" className="hover:text-white transition-colors">Preparazione CDS</Link></li>
-                <li><Link href="/protocolli" className="hover:text-white transition-colors">Protocolli</Link></li>
+                <li><a href="/chat" className="hover:text-white transition-colors">Chat AI</a></li>
+                <li><a href="/documentazione" className="hover:text-white transition-colors">Documentazione</a></li>
+                <li><a href="/preparazione-cds" className="hover:text-white transition-colors">Preparazione CDS</a></li>
+                <li><a href="/protocolli" className="hover:text-white transition-colors">Protocolli</a></li>
               </ul>
             </div>
             
             <div>
               <h4 className="font-semibold mb-4 text-lg">Risorse</h4>
               <ul className="space-y-3 text-gray-400">
-                <li><Link href="/sintomi" className="hover:text-white transition-colors">Database Sintomi</Link></li>
-                <li><Link href="/diario" className="hover:text-white transition-colors">Diario Trattamenti</Link></li>
-                <li><Link href="/toolkit" className="hover:text-white transition-colors">Calcolatori</Link></li>
+                <li><a href="/sintomi" className="hover:text-white transition-colors">Database Sintomi</a></li>
+                <li><a href="/diario" className="hover:text-white transition-colors">Diario Trattamenti</a></li>
+                <li><a href="/toolkit" className="hover:text-white transition-colors">Calcolatori</a></li>
                 <li>Guide Sicurezza</li>
               </ul>
             </div>
