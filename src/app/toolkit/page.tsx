@@ -1,6 +1,5 @@
 "use client"
 import React, { useState, useEffect, useMemo } from 'react';
-
 import { 
   Calculator, Timer, Droplet, Pill, 
   ArrowLeft, Info, AlertTriangle, CheckCircle, 
@@ -20,9 +19,9 @@ const ToolkitPage = () => {
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
 
-  // Timer per preparazione CDS
+  // Timer per preparazione CDS con fix TypeScript
   useEffect(() => {
-    let interval = null;
+    let interval: NodeJS.Timeout | null = null;
     if (isTimerRunning) {
       interval = setInterval(() => {
         setTimerSeconds(seconds => {
@@ -34,7 +33,11 @@ const ToolkitPage = () => {
         });
       }, 1000);
     }
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
   }, [isTimerRunning]);
 
   // Calcolatore CDS
@@ -95,13 +98,13 @@ const ToolkitPage = () => {
     return null;
   }, [formData, activeCalculator]);
 
-  const formatTime = (seconds) => {
+  const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const startTimer = (minutes) => {
+  const startTimer = (minutes: number) => {
     setTimerSeconds(minutes * 60);
     setIsTimerRunning(true);
   };
