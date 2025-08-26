@@ -1,6 +1,11 @@
-// src/lib/airtable.ts
+// airtable.ts - Integrazione Airtable Reale
 
-// Interfacce complete per tutte le tabelle
+// Credenziali Airtable
+const AIRTABLE_BASE_ID = 'app5b8Z1mnHiTexSK';
+const AIRTABLE_API_KEY = 'patHBKeuMtAh47bl5.2c36bdd966f7a847ffe1f3242be4a19dbf7b1fd02bd42865d15d8dbb402dffac';
+const AIRTABLE_API_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}`;
+
+// Interfacce per i dati
 export interface Protocollo {
   id: string;
   nome: string;
@@ -21,6 +26,17 @@ export interface Sintomo {
   urgenza: 'Bassa' | 'Media' | 'Alta';
   descrizione: string;
   protocolliSuggeriti: string[];
+}
+
+export interface FAQ {
+  id: string;
+  domanda: string;
+  risposta: string;
+  categoria: string;
+  keywords: string[];
+  importanza: number;
+  dataAggiornamento: string;
+  protocolloCorrelato: string;
 }
 
 export interface Documentazione {
@@ -58,17 +74,6 @@ export interface RicercaScientifica {
   risultatiPrincipali: string;
 }
 
-export interface FAQ {
-  id: string;
-  domanda: string;
-  risposta: string;
-  categoria: string;
-  keywords: string[];
-  importanza: number;
-  dataAggiornamento: string;
-  protocolloCorrelato: string;
-}
-
 export interface Dosaggio {
   id: string;
   patologia: string;
@@ -82,11 +87,7 @@ export interface Dosaggio {
   protocolloRef: string;
 }
 
-// Configurazione Airtable
-const AIRTABLE_BASE_ID = process.env.NEXT_PUBLIC_AIRTABLE_BASE_ID;
-const AIRTABLE_API_KEY = process.env.NEXT_PUBLIC_AIRTABLE_API_KEY;
-const AIRTABLE_API_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}`;
-
+// Headers per API Airtable
 const headers = {
   'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
   'Content-Type': 'application/json',
@@ -103,46 +104,46 @@ const safeParseInt = (value: any, defaultValue: number = 0): number => {
   return isNaN(parsed) ? defaultValue : parsed;
 };
 
-// Funzione generica per chiamate Airtable con retry
-async function airtableRequest(endpoint: string, options: RequestInit = {}, retries: number = 3): Promise<any> {
-  if (!AIRTABLE_BASE_ID || !AIRTABLE_API_KEY) {
-    throw new Error('Credenziali Airtable mancanti. Controlla le variabili d\'ambiente NEXT_PUBLIC_AIRTABLE_BASE_ID e NEXT_PUBLIC_AIRTABLE_API_KEY.');
-  }
+// Funzione generica per chiamate Airtable
+async function airtableRequest(endpoint: string, options: RequestInit = {}): Promise<any> {
+  try {
+    const response = await fetch(`${AIRTABLE_API_URL}${endpoint}`, {
+      ...options,
+      headers: {
+        ...headers,
+        ...options.headers,
+      },
+    });
 
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      const response = await fetch(`${AIRTABLE_API_URL}${endpoint}`, {
-        ...options,
-        headers: {
-          ...headers,
-          ...options.headers,
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        
-        // Se è l'ultimo tentativo o non è un errore temporaneo, lancia l'errore
-        if (attempt === retries || response.status < 500) {
-          throw new Error(
-            `Errore Airtable: ${response.status} ${response.statusText}. ${
-              errorData.error?.message || 'Errore sconosciuto'
-            }`
-          );
-        }
-        
-        // Attendi prima del prossimo tentativo
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-        continue;
-      }
-
-      return response.json();
-    } catch (error) {
-      if (attempt === retries) {
-        throw error;
-      }
-      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Errore Airtable: ${response.status} - ${errorData.error?.message || response.statusText}`);
     }
+
+    return response.json();
+  } catch (error) {
+    console.error('Errore nella richiesta Airtable:', error);
+    throw error;
+  }
+}
+
+// SINTOMI
+export async function getSintomi(): Promise<Sintomo[]> {
+  try {
+    const data = await airtableRequest('/sintomi');
+    
+    return data.records.map((record: any) => ({
+      id: record.id,
+      nome: record.fields.Nome || record.fields.nome || '',
+      keywords: parseCommaSeparatedString(record.fields.Keywords || record.fields.keywords || ''),
+      categoria: record.fields.Categoria || record.fields.categoria || '',
+      urgenza: record.fields.Urgenza || record.fields.urgenza || 'Bassa',
+      descrizione: record.fields.Descrizione || record.fields.descrizione || '',
+      protocolliSuggeriti: parseCommaSeparatedString(record.fields.Protocolli_Suggeriti || record.fields.protocolli_suggeriti || ''),
+    }));
+  } catch (error) {
+    console.error('Errore nel recupero sintomi:', error);
+    throw error;
   }
 }
 
@@ -168,22 +169,23 @@ export async function getProtocolli(): Promise<Protocollo[]> {
   }
 }
 
-// SINTOMI  
-export async function getSintomi(): Promise<Sintomo[]> {
+// FAQ
+export async function getFaq(): Promise<FAQ[]> {
   try {
-    const data = await airtableRequest('/sintomi');
+    const data = await airtableRequest('/FAQ');
     
     return data.records.map((record: any) => ({
       id: record.id,
-      nome: record.fields.Nome || record.fields.nome || '',
-      keywords: parseCommaSeparatedString(record.fields.Keywords || record.fields.keywords || ''),
+      domanda: record.fields.Domanda || record.fields.domanda || '',
+      risposta: record.fields.Risposta || record.fields.risposta || '',
       categoria: record.fields.Categoria || record.fields.categoria || '',
-      urgenza: record.fields.Urgenza || record.fields.urgenza || 'Bassa',
-      descrizione: record.fields.Descrizione || record.fields.descrizione || '',
-      protocolliSuggeriti: parseCommaSeparatedString(record.fields.Protocolli_Suggeriti || record.fields.protocolli_suggeriti || ''),
+      keywords: parseCommaSeparatedString(record.fields.Keywords || record.fields.keywords || ''),
+      importanza: safeParseInt(record.fields.Importanza || record.fields.importanza),
+      dataAggiornamento: record.fields.Data_Aggiornamento || record.fields.data_aggiornamento || '',
+      protocolloCorrelato: record.fields.Protocollo_Correlato || record.fields.protocollo_correlato || '',
     }));
   } catch (error) {
-    console.error('Errore nel recupero sintomi:', error);
+    console.error('Errore nel recupero FAQ:', error);
     throw error;
   }
 }
@@ -218,7 +220,7 @@ export async function getTestimonianze(): Promise<Testimonianza[]> {
       trattamentoUsato: record.fields.Trattamento_Usato || record.fields.trattamento_usato || '',
       durataTrattamento: record.fields.Durata_Trattamento || record.fields.durata_trattamento || '',
       risultati: record.fields.Risultati || record.fields.risultati || '',
-      etaPaziente: record.fields.Età_Paziente || record.fields.eta_paziente || '',
+      etaPaziente: record.fields.Eta_Paziente || record.fields.eta_paziente || '',
       noteAnonime: record.fields.Note_Anonime || record.fields.note_anonime || '',
       efficacia: safeParseInt(record.fields.Efficacia || record.fields.efficacia),
       dataTestimonianza: record.fields.Data_Testimonianza || record.fields.data_testimonianza || '',
@@ -253,27 +255,6 @@ export async function getRicerche(): Promise<RicercaScientifica[]> {
   }
 }
 
-// FAQ
-export async function getFaq(): Promise<FAQ[]> {
-  try {
-    const data = await airtableRequest('/faq');
-    
-    return data.records.map((record: any) => ({
-      id: record.id,
-      domanda: record.fields.Domanda || record.fields.domanda || '',
-      risposta: record.fields.Risposta || record.fields.risposta || '',
-      categoria: record.fields.Categoria || record.fields.categoria || '',
-      keywords: parseCommaSeparatedString(record.fields.Keywords || record.fields.keywords || ''),
-      importanza: safeParseInt(record.fields.Importanza || record.fields.importanza),
-      dataAggiornamento: record.fields.Data_Aggiornamento || record.fields.data_aggiornamento || '',
-      protocolloCorrelato: record.fields.Protocollo_Correlato || record.fields.protocollo_correlato || '',
-    }));
-  } catch (error) {
-    console.error('Errore nel recupero FAQ:', error);
-    throw error;
-  }
-}
-
 // DOSAGGI
 export async function getDosaggi(): Promise<Dosaggio[]> {
   try {
@@ -297,61 +278,7 @@ export async function getDosaggi(): Promise<Dosaggio[]> {
   }
 }
 
-// FUNZIONI DI RICERCA
-export async function searchProtocolli(query: string): Promise<Protocollo[]> {
-  try {
-    const lowerQuery = query.toLowerCase();
-    const searchFormula = `OR(
-      SEARCH("${lowerQuery}", LOWER({Nome})),
-      SEARCH("${lowerQuery}", LOWER({Descrizione})),
-      SEARCH("${lowerQuery}", LOWER({Note}))
-    )`;
-    
-    const data = await airtableRequest(`/protocolli?filterByFormula=${encodeURIComponent(searchFormula)}`);
-    
-    return data.records.map((record: any) => ({
-      id: record.id,
-      nome: record.fields.Nome || '',
-      descrizione: record.fields.Descrizione || '',
-      dosaggio: record.fields.Dosaggio || '',
-      sintomiCorrelati: parseCommaSeparatedString(record.fields.Sintomi_Correlati || ''),
-      pdfUrl: record.fields.PDF_URL || '',
-      efficacia: safeParseInt(record.fields.Efficacia),
-      note: record.fields.Note || '',
-      categoria: record.fields.Categoria || '',
-    }));
-  } catch (error) {
-    console.error('Errore nella ricerca protocolli:', error);
-    return [];
-  }
-}
-
-export async function searchSintomi(query: string): Promise<Sintomo[]> {
-  try {
-    const lowerQuery = query.toLowerCase();
-    const searchFormula = `OR(
-      SEARCH("${lowerQuery}", LOWER({Nome})),
-      SEARCH("${lowerQuery}", LOWER({Keywords})),
-      SEARCH("${lowerQuery}", LOWER({Descrizione}))
-    )`;
-    
-    const data = await airtableRequest(`/sintomi?filterByFormula=${encodeURIComponent(searchFormula)}`);
-    
-    return data.records.map((record: any) => ({
-      id: record.id,
-      nome: record.fields.Nome || '',
-      keywords: parseCommaSeparatedString(record.fields.Keywords || ''),
-      categoria: record.fields.Categoria || '',
-      urgenza: record.fields.Urgenza || 'Bassa',
-      descrizione: record.fields.Descrizione || '',
-      protocolliSuggeriti: parseCommaSeparatedString(record.fields.Protocolli_Suggeriti || ''),
-    }));
-  } catch (error) {
-    console.error('Errore nella ricerca sintomi:', error);
-    return [];
-  }
-}
-
+// RICERCA UNIFICATA
 export async function searchAllData(query: string): Promise<{
   protocolli: Protocollo[];
   sintomi: Sintomo[];
@@ -364,8 +291,8 @@ export async function searchAllData(query: string): Promise<{
   try {
     // Ricerca parallela in tutte le tabelle
     const [protocolli, sintomi, documentazione, testimonianze, ricerche, faq, dosaggi] = await Promise.allSettled([
-      searchProtocolli(query),
-      searchSintomi(query),
+      getProtocolli(),
+      getSintomi(),
       getDocumentazione(),
       getTestimonianze(),
       getRicerche(),
@@ -377,8 +304,18 @@ export async function searchAllData(query: string): Promise<{
     const lowerQuery = query.toLowerCase();
     
     return {
-      protocolli: protocolli.status === 'fulfilled' ? protocolli.value : [],
-      sintomi: sintomi.status === 'fulfilled' ? sintomi.value : [],
+      protocolli: protocolli.status === 'fulfilled' ? 
+        protocolli.value.filter(p => 
+          p.nome.toLowerCase().includes(lowerQuery) ||
+          p.descrizione.toLowerCase().includes(lowerQuery) ||
+          p.sintomiCorrelati.some(s => s.toLowerCase().includes(lowerQuery))
+        ) : [],
+      sintomi: sintomi.status === 'fulfilled' ?
+        sintomi.value.filter(s => 
+          s.nome.toLowerCase().includes(lowerQuery) ||
+          s.keywords.some(k => k.toLowerCase().includes(lowerQuery)) ||
+          s.descrizione.toLowerCase().includes(lowerQuery)
+        ) : [],
       documentazione: documentazione.status === 'fulfilled' ? 
         documentazione.value.filter(doc => 
           doc.titolo.toLowerCase().includes(lowerQuery) ||
@@ -422,91 +359,8 @@ export async function searchAllData(query: string): Promise<{
   }
 }
 
-// Cache system migliorato
-class EnhancedCache {
-  private cache: Map<string, { data: any; timestamp: number; ttl: number }> = new Map();
-  
-  set(key: string, data: any, ttl: number = 5 * 60 * 1000) {
-    this.cache.set(key, { data, timestamp: Date.now(), ttl });
-  }
-
-  get(key: string) {
-    const entry = this.cache.get(key);
-    if (!entry) return null;
-    
-    if (Date.now() - entry.timestamp > entry.ttl) {
-      this.cache.delete(key);
-      return null;
-    }
-    
-    return entry.data;
-  }
-
-  clear() {
-    this.cache.clear();
-  }
-
-  delete(key: string) {
-    this.cache.delete(key);
-  }
-
-  size() {
-    return this.cache.size;
-  }
-}
-
-export const cache = new EnhancedCache();
-
-// Funzioni con caching specifiche per tipo
-export async function getCachedData(type: 'protocolli'): Promise<Protocollo[]>;
-export async function getCachedData(type: 'sintomi'): Promise<Sintomo[]>;
-export async function getCachedData(type: 'documentazione'): Promise<Documentazione[]>;
-export async function getCachedData(type: 'testimonianze'): Promise<Testimonianza[]>;
-export async function getCachedData(type: 'ricerche'): Promise<RicercaScientifica[]>;
-export async function getCachedData(type: 'faq'): Promise<FAQ[]>;
-export async function getCachedData(type: 'dosaggi'): Promise<Dosaggio[]>;
-export async function getCachedData(type: string): Promise<any[]> {
-  const cacheKey = `data-${type}`;
-  const cached = cache.get(cacheKey);
-  
-  if (cached) {
-    return cached;
-  }
-  
-  let data: any[] = [];
-  
-  switch (type) {
-    case 'protocolli':
-      data = await getProtocolli();
-      break;
-    case 'sintomi':
-      data = await getSintomi();
-      break;
-    case 'documentazione':
-      data = await getDocumentazione();
-      break;
-    case 'testimonianze':
-      data = await getTestimonianze();
-      break;
-    case 'ricerche':
-      data = await getRicerche();
-      break;
-    case 'faq':
-      data = await getFaq();
-      break;
-    case 'dosaggi':
-      data = await getDosaggi();
-      break;
-    default:
-      data = [];
-  }
-  
-  cache.set(cacheKey, data);
-  return data;
-}
-
-// Formatta dati per AI con tutte le tabelle
-export function formatDataForAI(data: {
+// Formatta dati per Claude AI
+export function formatDataForClaude(data: {
   protocolli: Protocollo[];
   sintomi: Sintomo[];
   documentazione: Documentazione[];
@@ -584,25 +438,16 @@ export function formatDataForAI(data: {
     });
   }
   
-  // Documentazione
-  if (data.documentazione.length > 0) {
-    formattedData += "DOCUMENTAZIONE:\n";
-    data.documentazione.slice(0, 2).forEach((doc, index) => {
-      formattedData += `${index + 1}. ${doc.titolo} (${doc.categoria})\n`;
-      formattedData += `   • ${doc.contenuto.substring(0, 150)}...\n\n`;
-    });
-  }
-  
   return formattedData;
 }
 
-// Health check function
+// Test connessione Airtable
 export async function checkAirtableConnection(): Promise<{
   connected: boolean;
   tablesAvailable: string[];
   errors: string[];
 }> {
-  const tables = ['protocolli', 'sintomi', 'documentazione', 'testimonianze', 'ricerche', 'faq', 'dosaggi'];
+  const tables = ['sintomi', 'protocolli', 'FAQ', 'documentazione', 'testimonianze', 'ricerche', 'dosaggi'];
   const errors: string[] = [];
   const available: string[] = [];
   
@@ -620,4 +465,29 @@ export async function checkAirtableConnection(): Promise<{
     tablesAvailable: available,
     errors
   };
+}
+
+// Cache semplice per prestazioni
+const cache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minuti
+
+export async function getCachedData<T>(fetcher: () => Promise<T>, key: string): Promise<T> {
+  const cached = cache.get(key);
+  const now = Date.now();
+  
+  if (cached && (now - cached.timestamp) < CACHE_TTL) {
+    return cached.data;
+  }
+  
+  try {
+    const data = await fetcher();
+    cache.set(key, { data, timestamp: now });
+    return data;
+  } catch (error) {
+    // Se abbiamo dati in cache anche scaduti, usiamoli come fallback
+    if (cached) {
+      return cached.data;
+    }
+    throw error;
+  }
 }
