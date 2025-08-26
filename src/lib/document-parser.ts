@@ -16,6 +16,7 @@ export interface DocumentMetadata {
   extractedText?: string;
   wordCount?: number;
   lastProcessed?: Date;
+  keywords?: string[];
 }
 
 export interface DocumentSearchResult {
@@ -79,18 +80,30 @@ class DocumentCache {
     this.cache.clear();
   }
 
+  delete(key: string) {
+    this.cache.delete(key);
+  }
+
   size() {
     return this.cache.size;
   }
 
-  // Rimuovi documenti scaduti
+  // Rimuovi documenti scaduti - Fix per compatibilità TypeScript
   cleanup() {
     const now = Date.now();
-    for (const [key, entry] of this.cache.entries()) {
+    const keysToDelete: string[] = [];
+    
+    // Raccoglie le chiavi da eliminare
+    this.cache.forEach((entry, key) => {
       if (now - entry.timestamp > entry.ttl) {
-        this.cache.delete(key);
+        keysToDelete.push(key);
       }
-    }
+    });
+    
+    // Elimina le chiavi scadute
+    keysToDelete.forEach(key => {
+      this.cache.delete(key);
+    });
   }
 }
 
@@ -272,7 +285,8 @@ export async function parseDocument(metadata: DocumentMetadata): Promise<ParsedD
         content,
         extractedText: content,
         wordCount: content.split(/\s+/).length,
-        lastProcessed: new Date()
+        lastProcessed: new Date(),
+        keywords
       },
       content,
       sections,
