@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Filter, ArrowLeft, ExternalLink, Star, Download, Eye, Heart, Zap, Shield, Loader2, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
-import { getCachedProtocolli, type Protocollo } from '@/lib/airtable';
+import { getCachedData, type Protocollo } from '@/lib/airtable';
 
 const ProtocolliPage = () => {
   const [protocols, setProtocols] = useState<Protocollo[]>([]);
@@ -16,13 +16,13 @@ const ProtocolliPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Carica dati da Airtable
+  // Carica dati da Airtable usando la nuova API
   useEffect(() => {
     const loadProtocols = async () => {
       try {
         setLoading(true);
         setError(null);
-        const data = await getCachedProtocolli();
+        const data = await getCachedData('protocolli');
         setProtocols(data);
         setFilteredProtocols(data);
       } catch (err) {
@@ -50,11 +50,6 @@ const ProtocolliPage = () => {
       );
     }
 
-    // Filtro per sostanza
-    if (selectedSubstance !== 'all') {
-      filtered = filtered.filter(protocol => protocol.sostanza === selectedSubstance);
-    }
-
     // Filtro per categoria
     if (selectedCategory !== 'all') {
       filtered = filtered.filter(protocol => protocol.categoria === selectedCategory);
@@ -65,19 +60,6 @@ const ProtocolliPage = () => {
 
     setFilteredProtocols(filtered);
   }, [searchTerm, selectedSubstance, selectedCategory, minEfficacia, protocols]);
-
-  const getSubstanceColor = (substance: string) => {
-    switch (substance) {
-      case 'CDS':
-        return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-      case 'Blu di Metilene':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'Entrambi':
-        return 'bg-purple-100 text-purple-800 border-purple-200';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
 
   const renderStars = (rating: number) => {
     return Array.from({ length: 5 }, (_, i) => (
@@ -98,7 +80,7 @@ const ProtocolliPage = () => {
     setError(null);
     setLoading(true);
     try {
-      const data = await getCachedProtocolli();
+      const data = await getCachedData('protocolli');
       setProtocols(data);
       setFilteredProtocols(data);
     } catch (err) {
@@ -248,26 +230,7 @@ const ProtocolliPage = () => {
 
           {/* Filters */}
           {showFilters && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-              {/* Sostanza Filter */}
-              <div>
-                <label className="block text-sm font-medium mb-2">Sostanza</label>
-                <select
-                  value={selectedSubstance}
-                  onChange={(e) => setSelectedSubstance(e.target.value)}
-                  className={`w-full px-3 py-2 rounded-lg border ${
-                    darkMode 
-                      ? 'bg-gray-700 border-gray-600 text-white' 
-                      : 'bg-white border-gray-300 text-gray-900'
-                  }`}
-                >
-                  <option value="all">Tutte le sostanze</option>
-                  <option value="CDS">CDS</option>
-                  <option value="Blu di Metilene">Blu di Metilene</option>
-                  <option value="Entrambi">Entrambi</option>
-                </select>
-              </div>
-
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
               {/* Categoria Filter */}
               <div>
                 <label className="block text-sm font-medium mb-2">Categoria</label>
@@ -331,9 +294,6 @@ const ProtocolliPage = () => {
               <div className="p-6 pb-4">
                 <div className="flex items-start justify-between mb-3">
                   <h3 className="text-lg font-semibold leading-tight">{protocol.nome}</h3>
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getSubstanceColor(protocol.sostanza)}`}>
-                    {protocol.sostanza}
-                  </span>
                 </div>
                 
                 <div className="flex items-center justify-between mb-3">
