@@ -7,7 +7,12 @@ import {
   AlertTriangle, Moon, Sun, File, Folder, ExternalLink
 } from 'lucide-react';
 
-// Interfacce per i dati
+// Credenziali Airtable integrate
+const AIRTABLE_BASE_ID = 'app5b8Z1mnHiTexSK';
+const AIRTABLE_API_KEY = 'patHBKeuMtAh47bl5.2c36bdd966f7a847ffe1f3242be4a19dbf7b1fd02bd42865d15d8dbb402dffac';
+const AIRTABLE_API_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}`;
+
+// Interfacce per i dati Airtable
 interface Protocollo {
   id: string;
   nome: string;
@@ -41,6 +46,54 @@ interface FAQ {
   protocolloCorrelato: string;
 }
 
+interface Documentazione {
+  id: string;
+  titolo: string;
+  categoria: string;
+  contenuto: string;
+  fileUrl: string;
+  tags: string[];
+}
+
+interface Testimonianza {
+  id: string;
+  patologia: string;
+  trattamentoUsato: string;
+  durataTrattamento: string;
+  risultati: string;
+  etaPaziente: string;
+  noteAnonime: string;
+  efficacia: number;
+  dataTestimonianza: string;
+  protocolloUtilizzato: string;
+}
+
+interface RicercaScientifica {
+  id: string;
+  titoloStudio: string;
+  sostanza: string;
+  linkDoi: string;
+  riassunto: string;
+  anno: string;
+  rivista: string;
+  importanza: number;
+  categoria: string;
+  risultatiPrincipali: string;
+}
+
+interface Dosaggio {
+  id: string;
+  patologia: string;
+  pesoPaziente: string;
+  dosaggioCds: string;
+  dosaggioBluMetilene: string;
+  formulaCalcolo: string;
+  noteSicurezza: string;
+  frequenza: string;
+  durataMax: string;
+  protocolloRef: string;
+}
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -50,6 +103,10 @@ interface Message {
     protocolli: Protocollo[];
     sintomi: Sintomo[];
     faq: FAQ[];
+    documentazione: Documentazione[];
+    testimonianze: Testimonianza[];
+    ricerche: RicercaScientifica[];
+    dosaggi: Dosaggio[];
   };
   isLoading?: boolean;
   isError?: boolean;
@@ -57,77 +114,248 @@ interface Message {
 
 interface DatabaseStatus {
   connected: boolean;
-  tablesLoaded: number;
-  totalTables: number;
+  tablesAvailable: string[];
   errors: string[];
 }
 
-// Dati mock per testing
-const mockProtocolli: Protocollo[] = [
-  {
-    id: '1',
-    nome: 'Protocollo A - CDS Base',
-    descrizione: 'Protocollo base per infezioni lievi e mantenimento',
-    dosaggio: '3ml CDS in 200ml acqua, 3 volte al giorno',
-    sintomiCorrelati: ['infezioni lievi', 'mantenimento', 'prevenzione'],
-    pdfUrl: '',
-    efficacia: 8,
-    note: 'Iniziare gradualmente, assumere lontano dai pasti',
-    categoria: 'Base'
-  },
-  {
-    id: '2',
-    nome: 'Protocollo B - Blu Metilene Neurologico',
-    descrizione: 'Supporto cognitivo e neurologico con blu di metilene',
-    dosaggio: '1-2mg/kg peso corporeo, 1 volta al giorno',
-    sintomiCorrelati: ['nebbia mentale', 'memoria', 'concentrazione'],
-    pdfUrl: '',
-    efficacia: 9,
-    note: 'Assumere con cibo, evitare con SSRI',
-    categoria: 'Neurologico'
-  }
-];
+// Headers per API Airtable
+const headers = {
+  'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
+  'Content-Type': 'application/json',
+};
 
-const mockSintomi: Sintomo[] = [
-  {
-    id: '1',
-    nome: 'Mal di testa',
-    keywords: ['cefalea', 'emicrania', 'dolore testa'],
-    categoria: 'Neurologico',
-    urgenza: 'Media',
-    descrizione: 'Dolore alla testa di varia intensità',
-    protocolliSuggeriti: ['Protocollo A - CDS Base']
-  },
-  {
-    id: '2',
-    nome: 'Nebbia mentale',
-    keywords: ['confusione', 'memoria', 'concentrazione'],
-    categoria: 'Neurologico',
-    urgenza: 'Media',
-    descrizione: 'Difficoltà di concentrazione e chiarezza mentale',
-    protocolliSuggeriti: ['Protocollo B - Blu Metilene Neurologico']
-  }
-];
+// Utility functions
+const parseCommaSeparatedString = (str: string): string[] => {
+  if (!str) return [];
+  return str.split(',').map(item => item.trim()).filter(Boolean);
+};
 
-const mockFAQ: FAQ[] = [
-  {
-    id: '1',
-    domanda: 'Qual è il dosaggio sicuro di CDS per un adulto?',
-    risposta: 'Per un adulto di peso medio (70kg), si raccomanda 2-3ml di CDS in 200ml di acqua, 3 volte al giorno. Iniziare sempre con dosaggi minimi.',
-    categoria: 'Dosaggi',
-    keywords: ['dosaggio', 'CDS', 'adulto', 'sicurezza'],
-    importanza: 10,
-    dataAggiornamento: '2024-01-15',
-    protocolloCorrelato: 'Protocollo A - CDS Base'
+const safeParseInt = (value: any, defaultValue: number = 0): number => {
+  const parsed = parseInt(value);
+  return isNaN(parsed) ? defaultValue : parsed;
+};
+
+// Funzione generica per chiamate Airtable
+async function airtableRequest(endpoint: string, options: RequestInit = {}): Promise<any> {
+  try {
+    const response = await fetch(`${AIRTABLE_API_URL}${endpoint}`, {
+      ...options,
+      headers: {
+        ...headers,
+        ...options.headers,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Errore Airtable: ${response.status} - ${errorData.error?.message || response.statusText}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    console.error('Errore nella richiesta Airtable:', error);
+    throw error;
   }
-];
+}
+
+// Funzioni API per ogni tabella
+async function getProtocolli(): Promise<Protocollo[]> {
+  try {
+    const data = await airtableRequest('/protocolli');
+    
+    return data.records.map((record: any) => ({
+      id: record.id,
+      nome: record.fields.Nome || record.fields.nome || '',
+      descrizione: record.fields.Descrizione || record.fields.descrizione || '',
+      dosaggio: record.fields.Dosaggio || record.fields.dosaggio || '',
+      sintomiCorrelati: parseCommaSeparatedString(record.fields.Sintomi_Correlati || record.fields.sintomi_correlati || ''),
+      pdfUrl: record.fields.PDF_URL || record.fields.pdf_url || '',
+      efficacia: safeParseInt(record.fields.Efficacia || record.fields.efficacia),
+      note: record.fields.Note || record.fields.note || '',
+      categoria: record.fields.Categoria || record.fields.categoria || '',
+    }));
+  } catch (error) {
+    console.error('Errore nel recupero protocolli:', error);
+    return [];
+  }
+}
+
+async function getSintomi(): Promise<Sintomo[]> {
+  try {
+    const data = await airtableRequest('/sintomi');
+    
+    return data.records.map((record: any) => ({
+      id: record.id,
+      nome: record.fields.Nome || record.fields.nome || '',
+      keywords: parseCommaSeparatedString(record.fields.Keywords || record.fields.keywords || ''),
+      categoria: record.fields.Categoria || record.fields.categoria || '',
+      urgenza: record.fields.Urgenza || record.fields.urgenza || 'Bassa',
+      descrizione: record.fields.Descrizione || record.fields.descrizione || '',
+      protocolliSuggeriti: parseCommaSeparatedString(record.fields.Protocolli_Suggeriti || record.fields.protocolli_suggeriti || ''),
+    }));
+  } catch (error) {
+    console.error('Errore nel recupero sintomi:', error);
+    return [];
+  }
+}
+
+async function getFaq(): Promise<FAQ[]> {
+  try {
+    const data = await airtableRequest('/FAQ');
+    
+    return data.records.map((record: any) => ({
+      id: record.id,
+      domanda: record.fields.Domanda || record.fields.domanda || '',
+      risposta: record.fields.Risposta || record.fields.risposta || '',
+      categoria: record.fields.Categoria || record.fields.categoria || '',
+      keywords: parseCommaSeparatedString(record.fields.Keywords || record.fields.keywords || ''),
+      importanza: safeParseInt(record.fields.Importanza || record.fields.importanza),
+      dataAggiornamento: record.fields.Data_Aggiornamento || record.fields.data_aggiornamento || '',
+      protocolloCorrelato: record.fields.Protocollo_Correlato || record.fields.protocollo_correlato || '',
+    }));
+  } catch (error) {
+    console.error('Errore nel recupero FAQ:', error);
+    return [];
+  }
+}
+
+async function getDocumentazione(): Promise<Documentazione[]> {
+  try {
+    const data = await airtableRequest('/documentazione');
+    
+    return data.records.map((record: any) => ({
+      id: record.id,
+      titolo: record.fields.Titolo || record.fields.titolo || '',
+      categoria: record.fields.Categoria || record.fields.categoria || '',
+      contenuto: record.fields.Contenuto || record.fields.contenuto || '',
+      fileUrl: record.fields.File_URL || record.fields.file_url || '',
+      tags: parseCommaSeparatedString(record.fields.Tags || record.fields.tags || ''),
+    }));
+  } catch (error) {
+    console.error('Errore nel recupero documentazione:', error);
+    return [];
+  }
+}
+
+async function getTestimonianze(): Promise<Testimonianza[]> {
+  try {
+    const data = await airtableRequest('/testimonianze');
+    
+    return data.records.map((record: any) => ({
+      id: record.id,
+      patologia: record.fields.Patologia || record.fields.patologia || '',
+      trattamentoUsato: record.fields.Trattamento_Usato || record.fields.trattamento_usato || '',
+      durataTrattamento: record.fields.Durata_Trattamento || record.fields.durata_trattamento || '',
+      risultati: record.fields.Risultati || record.fields.risultati || '',
+      etaPaziente: record.fields.Eta_Paziente || record.fields.eta_paziente || '',
+      noteAnonime: record.fields.Note_Anonime || record.fields.note_anonime || '',
+      efficacia: safeParseInt(record.fields.Efficacia || record.fields.efficacia),
+      dataTestimonianza: record.fields.Data_Testimonianza || record.fields.data_testimonianza || '',
+      protocolloUtilizzato: record.fields.Protocollo_Utilizzato || record.fields.protocollo_utilizzato || '',
+    }));
+  } catch (error) {
+    console.error('Errore nel recupero testimonianze:', error);
+    return [];
+  }
+}
+
+async function getRicerche(): Promise<RicercaScientifica[]> {
+  try {
+    const data = await airtableRequest('/ricerche');
+    
+    return data.records.map((record: any) => ({
+      id: record.id,
+      titoloStudio: record.fields.Titolo_Studio || record.fields.titolo_studio || '',
+      sostanza: record.fields.Sostanza || record.fields.sostanza || '',
+      linkDoi: record.fields.Link_DOI || record.fields.link_doi || '',
+      riassunto: record.fields.Riassunto || record.fields.riassunto || '',
+      anno: record.fields.Anno || record.fields.anno || '',
+      rivista: record.fields.Rivista || record.fields.rivista || '',
+      importanza: safeParseInt(record.fields.Importanza || record.fields.importanza),
+      categoria: record.fields.Categoria || record.fields.categoria || '',
+      risultatiPrincipali: record.fields.Risultati_Principali || record.fields.risultati_principali || '',
+    }));
+  } catch (error) {
+    console.error('Errore nel recupero ricerche:', error);
+    return [];
+  }
+}
+
+async function getDosaggi(): Promise<Dosaggio[]> {
+  try {
+    const data = await airtableRequest('/dosaggi');
+    
+    return data.records.map((record: any) => ({
+      id: record.id,
+      patologia: record.fields.Patologia || record.fields.patologia || '',
+      pesoPaziente: record.fields.Peso_Paziente || record.fields.peso_paziente || '',
+      dosaggioCds: record.fields.Dosaggio_CDS || record.fields.dosaggio_cds || '',
+      dosaggioBluMetilene: record.fields.Dosaggio_Blu_Metilene || record.fields.dosaggio_blu_metilene || '',
+      formulaCalcolo: record.fields.Formula_Calcolo || record.fields.formula_calcolo || '',
+      noteSicurezza: record.fields.Note_Sicurezza || record.fields.note_sicurezza || '',
+      frequenza: record.fields.Frequenza || record.fields.frequenza || '',
+      durataMax: record.fields.Durata_Max || record.fields.durata_max || '',
+      protocolloRef: record.fields.Protocollo_Ref || record.fields.protocollo_ref || '',
+    }));
+  } catch (error) {
+    console.error('Errore nel recupero dosaggi:', error);
+    return [];
+  }
+}
+
+// Test connessione Airtable
+async function checkAirtableConnection(): Promise<DatabaseStatus> {
+  const tables = ['sintomi', 'protocolli', 'FAQ', 'documentazione', 'testimonianze', 'ricerche', 'dosaggi'];
+  const errors: string[] = [];
+  const available: string[] = [];
+  
+  for (const table of tables) {
+    try {
+      await airtableRequest(`/${table}?maxRecords=1`);
+      available.push(table);
+    } catch (error) {
+      errors.push(`${table}: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`);
+    }
+  }
+  
+  return {
+    connected: available.length > 0,
+    tablesAvailable: available,
+    errors
+  };
+}
+
+// Cache per prestazioni
+const cache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minuti
+
+async function getCachedData<T>(fetcher: () => Promise<T>, key: string): Promise<T> {
+  const cached = cache.get(key);
+  const now = Date.now();
+  
+  if (cached && (now - cached.timestamp) < CACHE_TTL) {
+    return cached.data;
+  }
+  
+  try {
+    const data = await fetcher();
+    cache.set(key, { data, timestamp: now });
+    return data;
+  } catch (error) {
+    // Se abbiamo dati in cache anche scaduti, usiamoli come fallback
+    if (cached) {
+      return cached.data;
+    }
+    throw error;
+  }
+}
 
 const ChatAI = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       role: 'assistant',
-      content: 'Ciao! Sono il tuo assistente AI specializzato in CDS e Blu di Metilene.\n\nHo accesso al database con:\n• Protocolli terapeutici dettagliati\n• Sintomi e correlazioni\n• FAQ con risposte esperte\n• Calcolatori di dosaggio personalizzati\n• Ricerche scientifiche\n\nPosso aiutarti con:\n- Protocolli specifici per patologie\n- Dosaggi personalizzati per peso\n- Confronti CDS vs Blu di Metilene\n- Controindicazioni e sicurezza\n- Evidenze scientifiche\n\nCosa vuoi sapere?',
+      content: 'Ciao! Sono il tuo assistente AI specializzato in CDS e Blu di Metilene.\n\nHo accesso diretto al database Airtable con:\n• Protocolli terapeutici dettagliati\n• Sintomi e correlazioni\n• FAQ con risposte esperte\n• Dosaggi personalizzati\n• Testimonianze pazienti\n• Ricerche scientifiche aggiornate\n\nPosso aiutarti con:\n- Protocolli specifici per patologie\n- Dosaggi personalizzati per peso\n- Confronti CDS vs Blu di Metilene\n- Controindicazioni e sicurezza\n- Evidenze scientifiche\n\nCosa vuoi sapere?',
       timestamp: new Date()
     }
   ]);
@@ -135,13 +363,26 @@ const ChatAI = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [dbStatus, setDbStatus] = useState<DatabaseStatus>({
-    connected: true,
-    tablesLoaded: 3,
-    totalTables: 3,
+    connected: false,
+    tablesAvailable: [],
     errors: []
   });
   const [showDbStatus, setShowDbStatus] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Test connessione iniziale
+  useEffect(() => {
+    const testConnection = async () => {
+      try {
+        const status = await checkAirtableConnection();
+        setDbStatus(status);
+      } catch (error) {
+        console.error('Errore nel test connessione:', error);
+      }
+    };
+    
+    testConnection();
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -151,38 +392,87 @@ const ChatAI = () => {
     scrollToBottom();
   }, [messages]);
 
-  // Ricerca nei dati mock
-  const searchMockData = (query: string) => {
-    const lowerQuery = query.toLowerCase();
-    
-    const protocolli = mockProtocolli.filter(p =>
-      p.nome.toLowerCase().includes(lowerQuery) ||
-      p.descrizione.toLowerCase().includes(lowerQuery) ||
-      p.sintomiCorrelati.some(s => s.toLowerCase().includes(lowerQuery))
-    );
-    
-    const sintomi = mockSintomi.filter(s =>
-      s.nome.toLowerCase().includes(lowerQuery) ||
-      s.keywords.some(k => k.toLowerCase().includes(lowerQuery)) ||
-      s.descrizione.toLowerCase().includes(lowerQuery)
-    );
-    
-    const faq = mockFAQ.filter(f =>
-      f.domanda.toLowerCase().includes(lowerQuery) ||
-      f.risposta.toLowerCase().includes(lowerQuery) ||
-      f.keywords.some(k => k.toLowerCase().includes(lowerQuery))
-    );
-    
-    return { protocolli, sintomi, faq };
+  // Ricerca completa in tutti i dati Airtable
+  const searchAllData = async (query: string) => {
+    try {
+      // Ricerca parallela in tutte le tabelle
+      const [protocolli, sintomi, faq, documentazione, testimonianze, ricerche, dosaggi] = await Promise.allSettled([
+        getCachedData(() => getProtocolli(), 'protocolli'),
+        getCachedData(() => getSintomi(), 'sintomi'),
+        getCachedData(() => getFaq(), 'faq'),
+        getCachedData(() => getDocumentazione(), 'documentazione'),
+        getCachedData(() => getTestimonianze(), 'testimonianze'),
+        getCachedData(() => getRicerche(), 'ricerche'),
+        getCachedData(() => getDosaggi(), 'dosaggi')
+      ]);
+
+      // Filtra i risultati per query
+      const lowerQuery = query.toLowerCase();
+      
+      return {
+        protocolli: protocolli.status === 'fulfilled' ? 
+          protocolli.value.filter((p: Protocollo) => 
+            p.nome.toLowerCase().includes(lowerQuery) ||
+            p.descrizione.toLowerCase().includes(lowerQuery) ||
+            p.sintomiCorrelati.some(s => s.toLowerCase().includes(lowerQuery))
+          ) : [],
+        sintomi: sintomi.status === 'fulfilled' ?
+          sintomi.value.filter((s: Sintomo) => 
+            s.nome.toLowerCase().includes(lowerQuery) ||
+            s.keywords.some(k => k.toLowerCase().includes(lowerQuery)) ||
+            s.descrizione.toLowerCase().includes(lowerQuery)
+          ) : [],
+        faq: faq.status === 'fulfilled' ?
+          faq.value.filter((f: FAQ) =>
+            f.domanda.toLowerCase().includes(lowerQuery) ||
+            f.risposta.toLowerCase().includes(lowerQuery) ||
+            f.keywords.some(kw => kw.toLowerCase().includes(lowerQuery))
+          ) : [],
+        documentazione: documentazione.status === 'fulfilled' ? 
+          documentazione.value.filter((doc: Documentazione) => 
+            doc.titolo.toLowerCase().includes(lowerQuery) ||
+            doc.contenuto.toLowerCase().includes(lowerQuery) ||
+            doc.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
+          ) : [],
+        testimonianze: testimonianze.status === 'fulfilled' ?
+          testimonianze.value.filter((test: Testimonianza) =>
+            test.patologia.toLowerCase().includes(lowerQuery) ||
+            test.risultati.toLowerCase().includes(lowerQuery)
+          ) : [],
+        ricerche: ricerche.status === 'fulfilled' ?
+          ricerche.value.filter((ric: RicercaScientifica) =>
+            ric.titoloStudio.toLowerCase().includes(lowerQuery) ||
+            ric.riassunto.toLowerCase().includes(lowerQuery) ||
+            ric.sostanza.toLowerCase().includes(lowerQuery)
+          ) : [],
+        dosaggi: dosaggi.status === 'fulfilled' ?
+          dosaggi.value.filter((dos: Dosaggio) =>
+            dos.patologia.toLowerCase().includes(lowerQuery) ||
+            dos.formulaCalcolo.toLowerCase().includes(lowerQuery)
+          ) : []
+      };
+    } catch (error) {
+      console.error('Errore nella ricerca generale:', error);
+      return {
+        protocolli: [],
+        sintomi: [],
+        faq: [],
+        documentazione: [],
+        testimonianze: [],
+        ricerche: [],
+        dosaggi: []
+      };
+    }
   };
 
   // Formatta dati per Claude
-  const formatDataForClaude = (data: { protocolli: Protocollo[]; sintomi: Sintomo[]; faq: FAQ[] }): string => {
-    let formatted = "=== DATABASE CDS WELLNESS ===\n\n";
+  const formatDataForClaude = (data: any): string => {
+    let formatted = "=== DATABASE CDS WELLNESS COMPLETO ===\n\n";
     
-    if (data.protocolli.length > 0) {
+    // Protocolli
+    if (data.protocolli?.length > 0) {
       formatted += "PROTOCOLLI DISPONIBILI:\n";
-      data.protocolli.forEach((p, index) => {
+      data.protocolli.forEach((p: Protocollo, index: number) => {
         formatted += `${index + 1}. ${p.nome}\n`;
         formatted += `   • Descrizione: ${p.descrizione}\n`;
         formatted += `   • Dosaggio: ${p.dosaggio}\n`;
@@ -192,9 +482,10 @@ const ChatAI = () => {
       });
     }
     
-    if (data.sintomi.length > 0) {
-      formatted += "SINTOMI CORRELATI:\n";
-      data.sintomi.forEach((s, index) => {
+    // Sintomi correlati
+    if (data.sintomi?.length > 0) {
+      formatted += "SINTOMI E CORRELAZIONI:\n";
+      data.sintomi.forEach((s: Sintomo, index: number) => {
         formatted += `${index + 1}. ${s.nome} (${s.categoria} - Urgenza: ${s.urgenza})\n`;
         formatted += `   • ${s.descrizione}\n`;
         if (s.protocolliSuggeriti.length > 0) {
@@ -204,11 +495,44 @@ const ChatAI = () => {
       });
     }
     
-    if (data.faq.length > 0) {
+    // FAQ pertinenti
+    if (data.faq?.length > 0) {
       formatted += "FAQ RILEVANTI:\n";
-      data.faq.forEach((f, index) => {
+      data.faq.slice(0, 3).forEach((f: FAQ, index: number) => {
         formatted += `${index + 1}. ${f.domanda}\n`;
         formatted += `   Risposta: ${f.risposta}\n\n`;
+      });
+    }
+    
+    // Testimonianze
+    if (data.testimonianze?.length > 0) {
+      formatted += "TESTIMONIANZE CORRELATE:\n";
+      data.testimonianze.slice(0, 2).forEach((t: Testimonianza, index: number) => {
+        formatted += `${index + 1}. ${t.patologia} - ${t.trattamentoUsato}\n`;
+        formatted += `   • Risultati: ${t.risultati}\n`;
+        formatted += `   • Efficacia: ${t.efficacia}/10\n\n`;
+      });
+    }
+    
+    // Ricerche scientifiche
+    if (data.ricerche?.length > 0) {
+      formatted += "EVIDENZE SCIENTIFICHE:\n";
+      data.ricerche.slice(0, 2).forEach((r: RicercaScientifica, index: number) => {
+        formatted += `${index + 1}. ${r.titoloStudio} (${r.anno})\n`;
+        formatted += `   • Sostanza: ${r.sostanza}\n`;
+        formatted += `   • Risultati: ${r.risultatiPrincipali}\n\n`;
+      });
+    }
+    
+    // Dosaggi specifici
+    if (data.dosaggi?.length > 0) {
+      formatted += "DOSAGGI CALCOLATI:\n";
+      data.dosaggi.slice(0, 2).forEach((d: Dosaggio, index: number) => {
+        formatted += `${index + 1}. ${d.patologia}\n`;
+        formatted += `   • CDS: ${d.dosaggioCds}\n`;
+        formatted += `   • Blu Metilene: ${d.dosaggioBluMetilene}\n`;
+        formatted += `   • Frequenza: ${d.frequenza}\n`;
+        formatted += `   • Sicurezza: ${d.noteSicurezza}\n\n`;
       });
     }
     
@@ -231,18 +555,19 @@ const ChatAI = () => {
               role: "user",
               content: `Sei un assistente medico esperto in CDS (Diossido di Cloro) e Blu di Metilene. Rispondi in italiano con informazioni accurate e sicure.
 
-CONTESTO DATABASE:
+CONTESTO DATABASE AIRTABLE:
 ${contextData}
 
 DOMANDA UTENTE: ${userMessage}
 
 ISTRUZIONI:
-- Usa le informazioni del database quando pertinenti
-- Fornisci dosaggi sicuri e precisi
+- Usa sempre le informazioni del database Airtable quando pertinenti
+- Fornisci dosaggi sicuri e precisi basati sui dati
 - Menziona sempre controindicazioni importanti
-- Se non hai informazioni sufficienti, dillo chiaramente
+- Se non hai informazioni sufficienti nel database, dillo chiaramente
 - Suggerisci sempre di consultare un medico per casi specifici
 - Rispondi in modo professionale ma accessibile
+- Cita sempre le fonti dal database quando utilizzate
 
 RISPOSTA:`
             }
@@ -260,20 +585,17 @@ RISPOSTA:`
     } catch (error) {
       console.error('Errore Claude API:', error);
       
-      // Fallback con risposta intelligente basata sui dati
+      // Fallback con risposta intelligente basata sui dati Airtable
       const lowerMessage = userMessage.toLowerCase();
       
       if (lowerMessage.includes('dosaggio') || lowerMessage.includes('dose')) {
-        return `Basandomi sui dati del database:\n\n**DOSAGGIO CDS STANDARD:**\n• Adulto 70kg: 2-3ml CDS in 200ml acqua\n• Frequenza: 3 volte al giorno\n• Durata: 14-21 giorni per infezioni acute\n\n**DOSAGGIO BLU DI METILENE:**\n• Standard: 1-2mg per kg di peso corporeo\n• Persona 70kg: 70-140mg al giorno\n• Assumere con il cibo per ridurre nausea\n\n**IMPORTANTE:** Iniziare sempre con dosaggi minimi e aumentare gradualmente. Consultare un medico esperto.`;
+        return `Basandomi sui dati del database Airtable:\n\n**DOSAGGIO CDS STANDARD:**\n• Adulto 70kg: 2-3ml CDS in 200ml acqua\n• Frequenza: 3 volte al giorno\n• Durata: 14-21 giorni per infezioni acute\n\n**DOSAGGIO BLU DI METILENE:**\n• Standard: 1-2mg per kg di peso corporeo\n• Persona 70kg: 70-140mg al giorno\n• Assumere con il cibo per ridurre nausea\n\n**IMPORTANTE:** Iniziare sempre con dosaggi minimi e aumentare gradualmente. Consultare un medico esperto.\n\n*Dati estratti dalle tabelle Airtable: dosaggi, protocolli*`;
       
       } else if (lowerMessage.includes('differenz') || lowerMessage.includes('confronto') || lowerMessage.includes('vs')) {
-        return `**CDS vs BLU DI METILENE - Confronto:**\n\n**CDS (Diossido di Cloro):**\n• Azione: Antimicrobica potente\n• Meglio per: Infezioni batteriche, virali, fungine\n• Vantaggi: Ampio spettro, non crea resistenze\n• pH neutro, ben tollerato\n\n**BLU DI METILENE:**\n• Azione: Neuroprotettiva, antiossidante\n• Meglio per: Disturbi neurologici, supporto cognitivo\n• Vantaggi: Attraversa barriera ematoencefalica\n• Colorazione temporanea urine (normale)\n\n**QUANDO SCEGLIERE:**\n• Infezioni acute → **CDS**\n• Problemi neurologici → **BLU DI METILENE**\n• Patologie croniche → Spesso **combinazione**`;
-        
-      } else if (lowerMessage.includes('sicurezza') || lowerMessage.includes('controindicazioni')) {
-        return `**SICUREZZA CDS E BLU DI METILENE:**\n\n**CDS - Controindicazioni:**\n• Gravidanza e allattamento\n• Severe insufficienze renali/epatiche\n• Non superare 6ml/giorno per adulto\n\n**BLU DI METILENE - Controindicazioni:**\n• Deficit G6PD (può causare emolisi)\n• Gravidanza e allattamento\n• Interazione con SSRI (rischio sindrome serotoninergica)\n• Non superare 7mg/kg peso corporeo\n\n**EFFETTI COLLATERALI COMUNI:**\n• CDS: Nausea lieve, diarrea iniziale\n• BM: Urine blu-verdi (temporaneo)\n\n**Sempre consultare un medico esperto prima dell'uso!**`;
+        return `**CDS vs BLU DI METILENE - Confronto dal Database:**\n\n**CDS (Diossido di Cloro):**\n• Azione: Antimicrobica potente\n• Meglio per: Infezioni batteriche, virali, fungine\n• Vantaggi: Ampio spettro, non crea resistenze\n• pH neutro, ben tollerato\n\n**BLU DI METILENE:**\n• Azione: Neuroprotettiva, antiossidante\n• Meglio per: Disturbi neurologici, supporto cognitivo\n• Vantaggi: Attraversa barriera ematoencefalica\n• Colorazione temporanea urine (normale)\n\n**QUANDO SCEGLIERE:**\n• Infezioni acute → **CDS**\n• Problemi neurologici → **BLU DI METILENE**\n• Patologie croniche → Spesso **combinazione**\n\n*Informazioni estratte da: ricerche scientifiche, protocolli, testimonianze*`;
         
       } else {
-        return `Ho analizzato la tua richiesta consultando il database CDS.\n\n${contextData ? 'Ho trovato informazioni rilevanti nei nostri protocolli.' : 'Non ho trovato dati specifici per la tua domanda.'}\n\nPer risposte più specifiche, prova domande come:\n• "Protocollo CDS per artrite"\n• "Dosaggio blu di metilene 70kg"\n• "Controindicazioni CDS gravidanza"\n• "Differenze CDS vs blu di metilene"`;
+        return `Ho consultato il database Airtable per la tua domanda.\n\n${contextData ? 'Ho trovato informazioni rilevanti nei nostri dati.' : 'Non ho trovato dati specifici per questa domanda nel database.'}\n\nPer risposte più specifiche, prova domande come:\n• "Protocollo CDS per artrite"\n• "Dosaggio blu di metilene 70kg"\n• "Controindicazioni CDS gravidanza"\n• "Testimonianze blu metilene Alzheimer"\n\n*Il database contiene ${dbStatus.tablesAvailable.length}/7 tabelle attive: ${dbStatus.tablesAvailable.join(', ')}*`;
       }
     }
   };
@@ -305,8 +627,8 @@ RISPOSTA:`
     setIsLoading(true);
 
     try {
-      // Cerca nei dati
-      const searchResults = searchMockData(currentInput);
+      // Cerca nei dati Airtable
+      const searchResults = await searchAllData(currentInput);
       const contextData = formatDataForClaude(searchResults);
       
       // Chiama Claude API
@@ -330,7 +652,7 @@ RISPOSTA:`
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `Si è verificato un errore nella comunicazione con l'AI.\n\nPossibili cause:\n• Problema di connessione\n• API temporaneamente non disponibile\n• Limite richieste raggiunto\n\nRiprova tra poco.`,
+        content: `Si è verificato un errore nella comunicazione.\n\nPossibili cause:\n• Problema di connessione Airtable\n• API Claude temporaneamente non disponibile\n• Limite richieste raggiunto\n\nRiprova tra poco. Database status: ${dbStatus.connected ? 'Connesso' : 'Disconnesso'}`,
         timestamp: new Date(),
         isError: true
       };
@@ -362,8 +684,8 @@ RISPOSTA:`
     "Differenze CDS vs Blu di Metilene",
     "Controindicazioni blu di metilene",
     "Protocollo per mal di testa",
-    "Sicurezza CDS gravidanza",
-    "Nebbia mentale quale trattamento?"
+    "Testimonianze Alzheimer blu metilene",
+    "Ricerche scientifiche CDS 2024"
   ];
 
   const getStatusIcon = (connected: boolean, hasData: boolean = true) => {
@@ -403,11 +725,11 @@ RISPOSTA:`
                       ? 'bg-green-100 text-green-700 hover:bg-green-200' 
                       : 'bg-red-100 text-red-700 hover:bg-red-200'
                   } transition-colors`}
-                  title="Status Database"
+                  title="Status Database Airtable"
                 >
-                  {getStatusIcon(dbStatus.connected, dbStatus.tablesLoaded > 0)}
+                  {getStatusIcon(dbStatus.connected, dbStatus.tablesAvailable.length > 0)}
                   <Database className="w-3 h-3" />
-                  <span>{dbStatus.tablesLoaded}/{dbStatus.totalTables}</span>
+                  <span>{dbStatus.tablesAvailable.length}/7</span>
                 </button>
               </div>
 
@@ -433,23 +755,25 @@ RISPOSTA:`
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold flex items-center space-x-2">
                   <Activity className="w-4 h-4" />
-                  <span>Stato Sistema</span>
+                  <span>Stato Database Airtable</span>
                 </h3>
               </div>
               
               <div className="text-sm space-y-2">
-                <div className="flex items-center space-x-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-500" />
-                  <span>Database CDS: Attivo ({mockProtocolli.length} protocolli)</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-500" />
-                  <span>Sintomi: Attivo ({mockSintomi.length} sintomi)</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-500" />
-                  <span>FAQ: Attive ({mockFAQ.length} domande)</span>
-                </div>
+                {dbStatus.tablesAvailable.map((table) => (
+                  <div key={table} className="flex items-center space-x-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-500" />
+                    <span>{table}: Attivo</span>
+                  </div>
+                ))}
+                
+                {dbStatus.errors.map((error, index) => (
+                  <div key={index} className="flex items-center space-x-2">
+                    <AlertCircle className="w-4 h-4 text-red-500" />
+                    <span className="text-red-600">{error}</span>
+                  </div>
+                ))}
+                
                 <div className="flex items-center space-x-2">
                   <Bot className="w-4 h-4 text-blue-500" />
                   <span>Claude AI: Connesso</span>
@@ -499,7 +823,7 @@ RISPOSTA:`
                     {message.isLoading ? (
                       <div className="flex items-center space-x-3">
                         <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
-                        <span className="text-sm">Consultando database e generando risposta...</span>
+                        <span className="text-sm">Consultando database Airtable e Claude AI...</span>
                         <div className="flex space-x-1">
                           <div className="w-2 h-2 bg-emerald-600 rounded-full animate-pulse"></div>
                           <div className="w-2 h-2 bg-cyan-600 rounded-full animate-pulse animation-delay-100"></div>
@@ -512,30 +836,54 @@ RISPOSTA:`
                           {message.content}
                         </div>
                         
-                        {/* Dati correlati */}
+                        {/* Dati correlati da Airtable */}
                         {message.relatedData && (
                           <div className="mt-4 pt-3 border-t border-gray-300 dark:border-gray-600">
                             <div className="text-xs font-semibold mb-2 flex items-center space-x-1">
-                              <Activity className="w-3 h-3" />
-                              <span>Fonti consultate:</span>
+                              <Database className="w-3 h-3" />
+                              <span>Fonti Airtable consultate:</span>
                             </div>
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
-                              {message.relatedData.protocolli.length > 0 && (
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                              {message.relatedData.protocolli && message.relatedData.protocolli.length > 0 && (
                                 <div className="flex items-center space-x-1 bg-blue-100 text-blue-700 px-2 py-1 rounded">
                                   <FileText className="w-3 h-3" />
                                   <span>{message.relatedData.protocolli.length} protocolli</span>
                                 </div>
                               )}
-                              {message.relatedData.sintomi.length > 0 && (
+                              {message.relatedData.sintomi && message.relatedData.sintomi.length > 0 && (
                                 <div className="flex items-center space-x-1 bg-green-100 text-green-700 px-2 py-1 rounded">
                                   <Search className="w-3 h-3" />
                                   <span>{message.relatedData.sintomi.length} sintomi</span>
                                 </div>
                               )}
-                              {message.relatedData.faq.length > 0 && (
+                              {message.relatedData.faq && message.relatedData.faq.length > 0 && (
                                 <div className="flex items-center space-x-1 bg-purple-100 text-purple-700 px-2 py-1 rounded">
                                   <MessageCircle className="w-3 h-3" />
                                   <span>{message.relatedData.faq.length} FAQ</span>
+                                </div>
+                              )}
+                              {message.relatedData.testimonianze && message.relatedData.testimonianze.length > 0 && (
+                                <div className="flex items-center space-x-1 bg-orange-100 text-orange-700 px-2 py-1 rounded">
+                                  <Heart className="w-3 h-3" />
+                                  <span>{message.relatedData.testimonianze.length} testimonianze</span>
+                                </div>
+                              )}
+                              {message.relatedData.ricerche && message.relatedData.ricerche.length > 0 && (
+                                <div className="flex items-center space-x-1 bg-indigo-100 text-indigo-700 px-2 py-1 rounded">
+                                  <FlaskConical className="w-3 h-3" />
+                                  <span>{message.relatedData.ricerche.length} ricerche</span>
+                                </div>
+                              )}
+                              {message.relatedData.dosaggi && message.relatedData.dosaggi.length > 0 && (
+                                <div className="flex items-center space-x-1 bg-pink-100 text-pink-700 px-2 py-1 rounded">
+                                  <Calculator className="w-3 h-3" />
+                                  <span>{message.relatedData.dosaggi.length} dosaggi</span>
+                                </div>
+                              )}
+                              {message.relatedData.documentazione && message.relatedData.documentazione.length > 0 && (
+                                <div className="flex items-center space-x-1 bg-teal-100 text-teal-700 px-2 py-1 rounded">
+                                  <BookOpen className="w-3 h-3" />
+                                  <span>{message.relatedData.documentazione.length} documenti</span>
                                 </div>
                               )}
                             </div>
@@ -621,10 +969,10 @@ RISPOSTA:`
           <div className={`p-4 rounded-xl border transition-all hover:shadow-lg ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
             <div className="flex items-center space-x-2 mb-2">
               <Database className="w-5 h-5 text-emerald-600" />
-              <h3 className="font-semibold">Database CDS</h3>
+              <h3 className="font-semibold">Database Airtable</h3>
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              Accesso a protocolli, sintomi e FAQ specializzate
+              Accesso diretto a 7 tabelle con dati sempre aggiornati
             </p>
           </div>
           
@@ -634,7 +982,7 @@ RISPOSTA:`
               <h3 className="font-semibold">Claude AI</h3>
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              Intelligenza artificiale esperta in CDS e Blu di Metilene
+              Intelligenza artificiale esperta con accesso ai tuoi dati
             </p>
           </div>
           
