@@ -1,640 +1,428 @@
 "use client"
-import React, { useState, useEffect } from 'react';
-import { Calculator, Timer, ArrowLeft, Scale, Beaker, CheckSquare, FileText, Play, Pause, RotateCcw, Bell, Download, Info, Zap, Heart, Clock } from 'lucide-react';
-import Link from 'next/link';
+import React, { useState, useEffect, useMemo } from 'react';
 
-interface ChecklistItem {
-  id: number;
-  text: string;
-  completed: boolean;
-}
-
-interface ConversionResult {
-  [key: string]: number;
-}
+import { 
+  Calculator, Timer, Droplet, Pill, 
+  ArrowLeft, Info, AlertTriangle, CheckCircle, 
+  Weight, Clock, RefreshCw, FileText, Download,
+  Zap, Target
+} from 'lucide-react';
 
 const ToolkitPage = () => {
-  const [activeTab, setActiveTab] = useState('calculator');
-  const [darkMode, setDarkMode] = useState(false);
-  
-  // Calculator states
-  const [weight, setWeight] = useState(70);
-  const [substance, setSubstance] = useState('CDS');
-  const [protocol, setProtocol] = useState('standard');
-  
-  // Timer states
-  const [timerMinutes, setTimerMinutes] = useState(120);
+  const [activeCalculator, setActiveCalculator] = useState('cds');
+  const [formData, setFormData] = useState({
+    peso: '',
+    patologia: 'lievi',
+    eta: '',
+    durata: '14',
+    frequenza: '3'
+  });
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
-  const [totalSeconds, setTotalSeconds] = useState(7200);
-  
-  // Converter states
-  const [converterValue, setConverterValue] = useState(10);
-  const [converterFrom, setConverterFrom] = useState('gocce');
-  
-  // Checklist states
-  const [checklist, setChecklist] = useState<ChecklistItem[]>([
-    { id: 1, text: 'Preparare acqua distillata', completed: false },
-    { id: 2, text: 'Dosare clorito di sodio', completed: false },
-    { id: 3, text: 'Aggiungere HCl goccia a goccia', completed: false },
-    { id: 4, text: 'Attendere 30 secondi (colore giallo)', completed: false },
-    { id: 5, text: 'Diluire in acqua distillata', completed: false },
-    { id: 6, text: 'Conservare in frigorifero', completed: false }
-  ]);
 
-  // Timer effect
+  // Timer per preparazione CDS
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isTimerRunning && totalSeconds > 0) {
+    let interval = null;
+    if (isTimerRunning) {
       interval = setInterval(() => {
-        setTotalSeconds(totalSeconds - 1);
+        setTimerSeconds(seconds => {
+          if (seconds <= 1) {
+            setIsTimerRunning(false);
+            return 0;
+          }
+          return seconds - 1;
+        });
       }, 1000);
-    } else if (totalSeconds === 0) {
-      setIsTimerRunning(false);
-      // Qui potresti aggiungere una notifica sonora
     }
     return () => clearInterval(interval);
-  }, [isTimerRunning, totalSeconds]);
+  }, [isTimerRunning]);
 
-  // Calcola dosi CDS
-  const calculateCDSDose = (): number => {
-    let baseDrops = 0;
-    switch (protocol) {
-      case 'standard':
-        baseDrops = weight * 0.05; // 0.05 gocce per kg
-        break;
-      case 'intensive':
-        baseDrops = weight * 0.1; // 0.1 gocce per kg
-        break;
-      case 'maintenance':
-        baseDrops = weight * 0.03; // 0.03 gocce per kg
-        break;
+  // Calcolatore CDS
+  const calculateCDS = () => {
+    const peso = parseFloat(formData.peso);
+    if (!peso) return null;
+
+    let doseBase;
+    switch (formData.patologia) {
+      case 'lievi': doseBase = 0.03; break;
+      case 'moderate': doseBase = 0.05; break;
+      case 'gravi': doseBase = 0.08; break;
+      case 'croniche': doseBase = 0.02; break;
+      default: doseBase = 0.03;
     }
-    return Math.round(baseDrops);
-  };
 
-  // Calcola dosi Blu di Metilene
-  const calculateBlueDose = (): number => {
-    let baseMg = 0;
-    switch (protocol) {
-      case 'standard':
-        baseMg = weight * 1; // 1mg per kg
-        break;
-      case 'intensive':
-        baseMg = weight * 2; // 2mg per kg
-        break;
-      case 'maintenance':
-        baseMg = weight * 0.5; // 0.5mg per kg
-        break;
-    }
-    return Math.round(baseMg * 10) / 10;
-  };
+    const mlCDS = (peso * doseBase).toFixed(1);
+    const mlAcqua = formData.patologia === 'gravi' ? 200 : 250;
+    const doseGiornaliera = (mlCDS * parseInt(formData.frequenza)).toFixed(1);
 
-  // Convertitore unità
-  const convertUnits = (): ConversionResult => {
-    const conversions: { [key: string]: { [key: string]: number } } = {
-      gocce: { ml: 0.05, mg: 1 },
-      ml: { gocce: 20, mg: 20 },
-      mg: { gocce: 1, ml: 0.05 }
+    return {
+      mlPerDose: mlCDS,
+      mlAcqua: mlAcqua,
+      doseGiornaliera: doseGiornaliera,
+      frequenza: formData.frequenza,
+      durata: formData.durata
     };
-    
-    const results: ConversionResult = {};
-    Object.keys(conversions).forEach(unit => {
-      if (unit !== converterFrom) {
-        results[unit] = Math.round(converterValue * conversions[converterFrom][unit] * 100) / 100;
-      }
-    });
-    
-    return results;
   };
 
-  // Toggle checklist item
-  const toggleChecklistItem = (id: number) => {
-    setChecklist(checklist.map(item => 
-      item.id === id ? { ...item, completed: !item.completed } : item
-    ));
+  // Calcolatore Blu di Metilene
+  const calculateBluMetilene = () => {
+    const peso = parseFloat(formData.peso);
+    if (!peso) return null;
+
+    let doseBase;
+    switch (formData.patologia) {
+      case 'lievi': doseBase = 1; break;
+      case 'moderate': doseBase = 1.5; break;
+      case 'gravi': doseBase = 2; break;
+      case 'neurologico': doseBase = 3; break;
+      default: doseBase = 1;
+    }
+
+    const mgPerDose = Math.round(peso * doseBase);
+    const mgGiornalieri = mgPerDose * (formData.patologia === 'neurologico' ? 1 : parseInt(formData.frequenza));
+
+    return {
+      mgPerDose: mgPerDose,
+      mgGiornalieri: mgGiornalieri,
+      frequenza: formData.patologia === 'neurologico' ? '1' : formData.frequenza,
+      durata: formData.durata
+    };
   };
 
-  // Reset timer
-  const resetTimer = () => {
-    setIsTimerRunning(false);
-    setTotalSeconds(timerMinutes * 60 + timerSeconds);
-  };
+  const currentResults = useMemo(() => {
+    if (activeCalculator === 'cds') return calculateCDS();
+    if (activeCalculator === 'bm') return calculateBluMetilene();
+    return null;
+  }, [formData, activeCalculator]);
 
-  // Start/Stop timer
-  const toggleTimer = () => {
-    setIsTimerRunning(!isTimerRunning);
-  };
-
-  // Format time
-  const formatTime = (seconds: number): string => {
+  const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const tabs = [
-    { id: 'calculator', label: 'Calcolatore', icon: Calculator },
-    { id: 'timer', label: 'Timer', icon: Timer },
-    { id: 'converter', label: 'Convertitore', icon: Scale },
-    { id: 'checklist', label: 'Checklist', icon: CheckSquare },
-    { id: 'guide', label: 'Guida', icon: FileText }
-  ];
+  const startTimer = (minutes) => {
+    setTimerSeconds(minutes * 60);
+    setIsTimerRunning(true);
+  };
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-blue-900">
       {/* Header */}
-      <header className={`sticky top-0 z-10 backdrop-blur-md transition-all duration-300 ${darkMode ? 'bg-gray-900/80' : 'bg-white/80'} border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+      <header className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
-              <Link href="/" className="flex items-center space-x-2 text-gray-600 hover:text-emerald-600 transition-colors">
-                <ArrowLeft className="w-5 h-5" />
-                <span>Torna alla Home</span>
-              </Link>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Zap className="w-6 h-6 text-emerald-600" />
-              <h1 className="text-xl font-bold bg-gradient-to-r from-emerald-600 to-cyan-600 bg-clip-text text-transparent">
-                Toolkit
+              <a 
+                href="/" 
+                className="flex items-center space-x-2 text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+              >
+                <ArrowLeft size={20} />
+                <span>Home</span>
+              </a>
+              <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center space-x-2">
+                <Calculator className="text-blue-600" size={28} />
+                <span>Toolkit</span>
               </h1>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-4 py-6">
-        {/* Tab Navigation */}
-        <div className="flex flex-wrap justify-center mb-8">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center space-x-2 px-6 py-3 rounded-xl mx-1 mb-2 transition-all duration-300 ${
-                activeTab === tab.id
-                  ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 text-white shadow-lg'
-                  : darkMode 
-                    ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' 
-                    : 'bg-white text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <tab.icon className="w-5 h-5" />
-              <span className="font-medium">{tab.label}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Calculator Tab */}
-        {activeTab === 'calculator' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Input Section */}
-            <div className={`rounded-2xl shadow-sm p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-              <h2 className="text-2xl font-bold mb-6 flex items-center">
-                <Calculator className="w-6 h-6 mr-2 text-emerald-600" />
-                Calcolatore Dosi
-              </h2>
-              
-              <div className="space-y-6">
-                {/* Weight Input */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          {[
+            { label: 'Calcolatori', value: '3', icon: Calculator, color: 'blue' },
+            { label: 'Timer Prep.', value: '4', icon: Timer, color: 'green' },
+            { label: 'Convertitori', value: '2', icon: RefreshCw, color: 'purple' },
+            { label: 'Tabelle Ref.', value: '5', icon: FileText, color: 'orange' }
+          ].map((stat, index) => (
+            <div key={index} className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
+              <div className="flex items-center justify-between">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Peso Corporeo (kg)</label>
-                  <input
-                    type="number"
-                    value={weight}
-                    onChange={(e) => setWeight(Number(e.target.value))}
-                    className={`w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                      darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
-                    }`}
-                    min="1"
-                    max="200"
-                  />
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">{stat.label}</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{stat.value}</p>
                 </div>
-
-                {/* Substance Selection */}
-                <div>
-                  <label className="block text-sm font-medium mb-2">Sostanza</label>
-                  <select
-                    value={substance}
-                    onChange={(e) => setSubstance(e.target.value)}
-                    className={`w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                      darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
-                    }`}
-                  >
-                    <option value="CDS">CDS (Diossido di Cloro)</option>
-                    <option value="BlueDiMetilene">Blu di Metilene</option>
-                  </select>
-                </div>
-
-                {/* Protocol Selection */}
-                <div>
-                  <label className="block text-sm font-medium mb-2">Protocollo</label>
-                  <select
-                    value={protocol}
-                    onChange={(e) => setProtocol(e.target.value)}
-                    className={`w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                      darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
-                    }`}
-                  >
-                    <option value="maintenance">Mantenimento</option>
-                    <option value="standard">Standard</option>
-                    <option value="intensive">Intensivo</option>
-                  </select>
+                <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900">
+                  <stat.icon className="text-blue-600 dark:text-blue-400" size={24} />
                 </div>
               </div>
             </div>
+          ))}
+        </div>
 
-            {/* Results Section */}
-            <div className={`rounded-2xl shadow-sm p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-              <h3 className="text-xl font-bold mb-4">Risultati Calcolazione</h3>
-              
-              {substance === 'CDS' ? (
-                <div className="space-y-4">
-                  <div className="p-4 bg-emerald-100 dark:bg-emerald-900 rounded-xl">
-                    <div className="text-3xl font-bold text-emerald-600 mb-2">
-                      {calculateCDSDose()} gocce
-                    </div>
-                    <div className="text-sm text-gray-600 dark:text-gray-400">
-                      Dose giornaliera CDS
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-3">
-                    <div className="flex justify-between p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                      <span>Diluizione consigliata:</span>
-                      <span className="font-medium">100-200ml acqua</span>
-                    </div>
-                    <div className="flex justify-between p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                      <span>Frequenza:</span>
-                      <span className="font-medium">3 volte al giorno</span>
-                    </div>
-                    <div className="flex justify-between p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                      <span>Intervallo:</span>
-                      <span className="font-medium">2 ore tra le dosi</span>
-                    </div>
-                  </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Calcolatori Principali */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Selector */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
+                <Target className="text-blue-600" size={24} />
+                <span>Calcolatori Dosaggio</span>
+              </h2>
+
+              {/* Calculator Tabs */}
+              <div className="flex space-x-2 mb-6">
+                {[
+                  { id: 'cds', label: 'CDS', icon: Droplet, color: 'blue' },
+                  { id: 'bm', label: 'Blu Metilene', icon: Pill, color: 'indigo' }
+                ].map(calc => (
+                  <button
+                    key={calc.id}
+                    onClick={() => setActiveCalculator(calc.id)}
+                    className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-all ${
+                      activeCalculator === calc.id
+                        ? 'bg-blue-600 text-white shadow-lg'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    <calc.icon size={18} />
+                    <span>{calc.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Form Inputs */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    <Weight size={16} className="inline mr-1" />
+                    Peso (kg)
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.peso}
+                    onChange={(e) => setFormData({...formData, peso: e.target.value})}
+                    placeholder="es. 70"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="p-4 bg-blue-100 dark:bg-blue-900 rounded-xl">
-                    <div className="text-3xl font-bold text-blue-600 mb-2">
-                      {calculateBlueDose()} mg
-                    </div>
-                    <div className="text-sm text-gray-600 dark:text-gray-400">
-                      Dose giornaliera Blu di Metilene
-                    </div>
-                  </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    <AlertTriangle size={16} className="inline mr-1" />
+                    Patologia
+                  </label>
+                  <select
+                    value={formData.patologia}
+                    onChange={(e) => setFormData({...formData, patologia: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="lievi">Infezioni Lievi</option>
+                    <option value="moderate">Infezioni Moderate</option>
+                    <option value="gravi">Infezioni Gravi</option>
+                    <option value="croniche">Patologie Croniche</option>
+                    {activeCalculator === 'bm' && (
+                      <option value="neurologico">Uso Neurologico</option>
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    <Clock size={16} className="inline mr-1" />
+                    Frequenza/die
+                  </label>
+                  <select
+                    value={formData.frequenza}
+                    onChange={(e) => setFormData({...formData, frequenza: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="1">1 volta</option>
+                    <option value="2">2 volte</option>
+                    <option value="3">3 volte</option>
+                    <option value="4">4 volte</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Results */}
+              {currentResults && formData.peso && (
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg p-6 border border-blue-200 dark:border-blue-800">
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
+                    <CheckCircle className="text-green-600" size={20} />
+                    <span>Dosaggio Calcolato</span>
+                  </h3>
                   
-                  <div className="space-y-3">
-                    <div className="flex justify-between p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                      <span>Diluizione consigliata:</span>
-                      <span className="font-medium">250ml acqua</span>
-                    </div>
-                    <div className="flex justify-between p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                      <span>Frequenza:</span>
-                      <span className="font-medium">1-2 volte al giorno</span>
-                    </div>
-                    <div className="flex justify-between p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                      <span>Note:</span>
-                      <span className="font-medium">Può colorare urine</span>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {activeCalculator === 'cds' ? (
+                      <>
+                        <div className="text-center">
+                          <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{currentResults.mlPerDose}ml</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">CDS per dose</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{currentResults.mlAcqua}ml</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">Acqua</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-2xl font-bold text-green-600 dark:text-green-400">{currentResults.doseGiornaliera}ml</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">CDS/giorno</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">{currentResults.durata}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">giorni</p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-center">
+                          <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{currentResults.mgPerDose}mg</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">BM per dose</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{currentResults.mgGiornalieri}mg</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">BM/giorno</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-2xl font-bold text-green-600 dark:text-green-400">{currentResults.frequenza}x</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">al giorno</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">{currentResults.durata}</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">giorni</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                    <div className="flex items-start space-x-2">
+                      <Info className="text-yellow-600 dark:text-yellow-400 mt-0.5" size={16} />
+                      <div>
+                        <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300">Note Importanti:</p>
+                        <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">
+                          {activeCalculator === 'cds' 
+                            ? "Assumere a stomaco vuoto, distanziare di 2 ore da vitamine/antiossidanti. Aumentare gradualmente se primo utilizzo."
+                            : "Assumere con cibo per ridurre nausea. Può colorare temporaneamente urine di blu-verde. Evitare con inibitori MAO."
+                          }
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
             </div>
-          </div>
-        )}
 
-        {/* Timer Tab */}
-        {activeTab === 'timer' && (
-          <div className="max-w-2xl mx-auto">
-            <div className={`rounded-2xl shadow-sm p-8 text-center ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-              <h2 className="text-2xl font-bold mb-6 flex items-center justify-center">
-                <Timer className="w-6 h-6 mr-2 text-emerald-600" />
-                Timer Promemoria
+            {/* Convertitori */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
+                <RefreshCw className="text-green-600" size={24} />
+                <span>Convertitori Rapidi</span>
               </h2>
-              
-              {/* Timer Display */}
-              <div className="mb-8">
-                <div className="text-6xl font-bold text-emerald-600 mb-4">
-                  {formatTime(totalSeconds)}
-                </div>
-                <div className="text-gray-600 dark:text-gray-400">
-                  {totalSeconds === 0 ? 'Tempo scaduto!' : 'Tempo rimanente'}
-                </div>
-              </div>
 
-              {/* Timer Controls */}
-              <div className="flex justify-center space-x-4 mb-6">
-                <button
-                  onClick={toggleTimer}
-                  className={`flex items-center space-x-2 px-6 py-3 rounded-xl transition-all duration-300 ${
-                    isTimerRunning
-                      ? 'bg-red-500 hover:bg-red-600 text-white'
-                      : 'bg-emerald-500 hover:bg-emerald-600 text-white'
-                  }`}
-                >
-                  {isTimerRunning ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
-                  <span>{isTimerRunning ? 'Pausa' : 'Avvia'}</span>
-                </button>
-                
-                <button
-                  onClick={resetTimer}
-                  className="flex items-center space-x-2 px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-xl transition-colors"
-                >
-                  <RotateCcw className="w-5 h-5" />
-                  <span>Reset</span>
-                </button>
-              </div>
-
-              {/* Timer Settings */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Minuti</label>
-                  <input
-                    type="number"
-                    value={timerMinutes}
-                    onChange={(e) => {
-                      setTimerMinutes(Number(e.target.value));
-                      setTotalSeconds(Number(e.target.value) * 60 + timerSeconds);
-                    }}
-                    className={`w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                      darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
-                    }`}
-                    min="0"
-                    max="999"
-                  />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <h3 className="font-medium text-gray-900 dark:text-white mb-2">CDS → ppm</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    1ml CDS (3000ppm) = 3mg ClO₂<br/>
+                    In 200ml acqua = 15ppm finali
+                  </p>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Secondi</label>
-                  <input
-                    type="number"
-                    value={timerSeconds}
-                    onChange={(e) => {
-                      setTimerSeconds(Number(e.target.value));
-                      setTotalSeconds(timerMinutes * 60 + Number(e.target.value));
-                    }}
-                    className={`w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                      darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
-                    }`}
-                    min="0"
-                    max="59"
-                  />
-                </div>
-              </div>
-
-              {/* Preset Timers */}
-              <div className="mt-6">
-                <h3 className="text-lg font-semibold mb-3">Timer Preimpostati</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {[
-                    { label: '30 sec', value: 30 },
-                    { label: '2 min', value: 120 },
-                    { label: '1 ora', value: 3600 },
-                    { label: '2 ore', value: 7200 }
-                  ].map((preset) => (
-                    <button
-                      key={preset.value}
-                      onClick={() => {
-                        setTotalSeconds(preset.value);
-                        setTimerMinutes(Math.floor(preset.value / 60));
-                        setTimerSeconds(preset.value % 60);
-                      }}
-                      className="px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-lg transition-colors"
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
+                <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <h3 className="font-medium text-gray-900 dark:text-white mb-2">BM Concentrazioni</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    1% soluzione = 10mg/ml<br/>
+                    0.1% topico = 1mg/ml
+                  </p>
                 </div>
               </div>
             </div>
           </div>
-        )}
 
-        {/* Converter Tab */}
-        {activeTab === 'converter' && (
-          <div className="max-w-2xl mx-auto">
-            <div className={`rounded-2xl shadow-sm p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-              <h2 className="text-2xl font-bold mb-6 flex items-center">
-                <Scale className="w-6 h-6 mr-2 text-emerald-600" />
-                Convertitore Unità
+          {/* Sidebar - Timer e Tools */}
+          <div className="space-y-6">
+            {/* Timer Preparazione */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
+                <Timer className="text-orange-600" size={24} />
+                <span>Timer Preparazione</span>
               </h2>
-              
-              <div className="space-y-6">
-                {/* Input */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Valore</label>
-                    <input
-                      type="number"
-                      value={converterValue}
-                      onChange={(e) => setConverterValue(Number(e.target.value))}
-                      className={`w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                        darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
-                      }`}
-                      min="0"
-                      step="0.1"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Da</label>
-                    <select
-                      value={converterFrom}
-                      onChange={(e) => setConverterFrom(e.target.value)}
-                      className={`w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                        darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
-                      }`}
-                    >
-                      <option value="gocce">Gocce</option>
-                      <option value="ml">Millilitri (ml)</option>
-                      <option value="mg">Milligrammi (mg)</option>
-                    </select>
-                  </div>
-                </div>
 
-                {/* Results */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold">Conversioni:</h3>
-                  {Object.entries(convertUnits()).map(([unit, value]) => (
-                    <div key={unit} className="flex justify-between p-4 bg-gray-100 dark:bg-gray-700 rounded-xl">
-                      <span className="font-medium capitalize">{unit}:</span>
-                      <span className="font-bold text-emerald-600">{value}</span>
-                    </div>
-                  ))}
+              <div className="text-center mb-4">
+                <div className="text-4xl font-mono font-bold text-gray-900 dark:text-white mb-2">
+                  {formatTime(timerSeconds)}
                 </div>
-
-                {/* Reference Table */}
-                <div className="mt-8">
-                  <h3 className="text-lg font-semibold mb-4">Tabella di Riferimento</h3>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-100 dark:bg-gray-700">
-                        <tr>
-                          <th className="px-4 py-2 text-left">Gocce</th>
-                          <th className="px-4 py-2 text-left">ML</th>
-                          <th className="px-4 py-2 text-left">MG (approx)</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
-                        {[
-                          { gocce: 1, ml: 0.05, mg: 1 },
-                          { gocce: 5, ml: 0.25, mg: 5 },
-                          { gocce: 10, ml: 0.5, mg: 10 },
-                          { gocce: 20, ml: 1, mg: 20 }
-                        ].map((row, index) => (
-                          <tr key={index}>
-                            <td className="px-4 py-2">{row.gocce}</td>
-                            <td className="px-4 py-2">{row.ml}</td>
-                            <td className="px-4 py-2">{row.mg}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  {isTimerRunning ? 'Preparazione in corso...' : 'Seleziona tempo'}
+                </p>
               </div>
-            </div>
-          </div>
-        )}
 
-        {/* Checklist Tab */}
-        {activeTab === 'checklist' && (
-          <div className="max-w-2xl mx-auto">
-            <div className={`rounded-2xl shadow-sm p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-              <h2 className="text-2xl font-bold mb-6 flex items-center">
-                <CheckSquare className="w-6 h-6 mr-2 text-emerald-600" />
-                Checklist Preparazione CDS
-              </h2>
-              
-              <div className="space-y-4">
-                {checklist.map((item) => (
-                  <div
-                    key={item.id}
-                    className={`flex items-center p-4 rounded-xl border transition-all duration-300 ${
-                      item.completed
-                        ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-700'
-                        : 'bg-gray-50 border-gray-200 dark:bg-gray-700 dark:border-gray-600'
-                    }`}
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                {[
+                  { label: '12h CDS', minutes: 720 },
+                  { label: '24h CDS', minutes: 1440 },
+                  { label: '3min MMS', minutes: 3 },
+                  { label: '20min Attiv.', minutes: 20 }
+                ].map((timer, index) => (
+                  <button
+                    key={index}
+                    onClick={() => startTimer(timer.minutes)}
+                    disabled={isTimerRunning}
+                    className="px-3 py-2 text-xs font-medium bg-orange-100 hover:bg-orange-200 disabled:bg-gray-100 text-orange-800 disabled:text-gray-500 rounded-lg transition-colors"
                   >
-                    <button
-                      onClick={() => toggleChecklistItem(item.id)}
-                      className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center mr-4 transition-all duration-300 ${
-                        item.completed
-                          ? 'bg-green-500 border-green-500 text-white'
-                          : 'border-gray-300 hover:border-green-400'
-                      }`}
-                    >
-                      {item.completed && <CheckSquare className="w-4 h-4" />}
-                    </button>
-                    <span className={`flex-1 ${item.completed ? 'line-through text-gray-500' : ''}`}>
-                      {item.text}
-                    </span>
-                  </div>
+                    {timer.label}
+                  </button>
                 ))}
               </div>
 
-              {/* Progress */}
-              <div className="mt-6">
-                <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
-                  <span>Progresso</span>
-                  <span>{checklist.filter(item => item.completed).length}/{checklist.length}</span>
-                </div>
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                  <div
-                    className="bg-emerald-500 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${(checklist.filter(item => item.completed).length / checklist.length) * 100}%` }}
-                  ></div>
-                </div>
-              </div>
-
-              {/* Reset Button */}
-              <button
-                onClick={() => setChecklist(checklist.map(item => ({ ...item, completed: false })))}
-                className="mt-6 w-full bg-gray-500 hover:bg-gray-600 text-white py-3 rounded-xl transition-colors"
-              >
-                Reset Checklist
-              </button>
+              {isTimerRunning && (
+                <button
+                  onClick={() => setIsTimerRunning(false)}
+                  className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
+                >
+                  Stop Timer
+                </button>
+              )}
             </div>
-          </div>
-        )}
 
-        {/* Guide Tab */}
-        {activeTab === 'guide' && (
-          <div className="max-w-4xl mx-auto">
-            <div className={`rounded-2xl shadow-sm p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-              <h2 className="text-2xl font-bold mb-6 flex items-center">
-                <FileText className="w-6 h-6 mr-2 text-emerald-600" />
-                Guida Rapida
+            {/* Tabelle Riferimento */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
+                <FileText className="text-purple-600" size={24} />
+                <span>Tabelle Riferimento</span>
               </h2>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* CDS Guide */}
-                <div className="space-y-4">
-                  <h3 className="text-xl font-semibold text-emerald-600">Preparazione CDS</h3>
-                  <div className="space-y-3">
-                    <div className="p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                      <h4 className="font-medium mb-1">Step 1: Materiali</h4>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Clorito di sodio 28%, HCl 4%, acqua distillata, bicchiere di vetro
-                      </p>
-                    </div>
-                    <div className="p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                      <h4 className="font-medium mb-1">Step 2: Attivazione</h4>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        1 goccia clorito + 1 goccia HCl, attendere 30 secondi
-                      </p>
-                    </div>
-                    <div className="p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                      <h4 className="font-medium mb-1">Step 3: Diluizione</h4>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Diluire in 100-200ml di acqua distillata
-                      </p>
-                    </div>
-                  </div>
-                </div>
 
-                {/* Blue Guide */}
-                <div className="space-y-4">
-                  <h3 className="text-xl font-semibold text-blue-600">Preparazione Blu di Metilene</h3>
-                  <div className="space-y-3">
-                    <div className="p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                      <h4 className="font-medium mb-1">Step 1: Dosaggio</h4>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        1mg per kg di peso corporeo (usa il calcolatore)
-                      </p>
-                    </div>
-                    <div className="p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                      <h4 className="font-medium mb-1">Step 2: Diluizione</h4>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Diluire in 250ml di acqua filtrata
-                      </p>
-                    </div>
-                    <div className="p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                      <h4 className="font-medium mb-1">Step 3: Assunzione</h4>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        Assumere 1-2 volte al giorno lontano dai pasti
-                      </p>
-                    </div>
+              <div className="space-y-3">
+                {[
+                  { title: 'Dosaggi per Patologia', desc: 'Tabella completa dosaggi' },
+                  { title: 'Interazioni Farmaci', desc: 'Controindicazioni note' },
+                  { title: 'Tempi di Attivazione', desc: 'MMS, CDS, CDH timing' },
+                  { title: 'Diluizioni Topiche', desc: 'Concentrazioni sicure' },
+                  { title: 'FAQ Tecniche', desc: 'Domande frequenti' }
+                ].map((item, index) => (
+                  <div key={index} className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors cursor-pointer">
+                    <h3 className="font-medium text-gray-900 dark:text-white text-sm">{item.title}</h3>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{item.desc}</p>
                   </div>
-                </div>
+                ))}
               </div>
+            </div>
 
-              {/* Safety Notes */}
-              <div className="mt-8 p-4 bg-yellow-100 dark:bg-yellow-900/20 rounded-xl">
-                <h3 className="text-lg font-semibold text-yellow-800 dark:text-yellow-200 mb-2 flex items-center">
-                  <Info className="w-5 h-5 mr-2" />
-                  Note di Sicurezza
-                </h3>
-                <ul className="text-sm text-yellow-700 dark:text-yellow-300 space-y-1">
-                  <li>• Non superare mai i dosaggi consigliati</li>
-                  <li>• Consultare un medico prima dell'uso</li>
-                  <li>• Conservare in luogo fresco e asciutto</li>
-                  <li>• Non assumere insieme a vitamina C</li>
-                  <li>• Monitorare le reazioni del corpo</li>
-                </ul>
+            {/* Quick Actions */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
+                <Zap className="text-yellow-600" size={24} />
+                <span>Azioni Rapide</span>
+              </h2>
+
+              <div className="space-y-2">
+                <a href="/diario" className="block w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-center font-medium transition-colors">
+                  Aggiungi al Diario
+                </a>
+                <button className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors">
+                  <Download size={16} className="inline mr-2" />
+                  Esporta PDF
+                </button>
+                <a href="/chat-ai" className="block w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-center font-medium transition-colors">
+                  Chiedi all'AI
+                </a>
               </div>
             </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
