@@ -284,7 +284,7 @@ export async function POST(request: NextRequest) {
         }
         
         // Score nel contenuto
-        queryWords.forEach(word => {
+        queryWords.forEach((word: string) => {
           const regex = new RegExp(`\\b${word}\\b`, 'gi');
           const matches = lowerContent.match(regex);
           if (matches) {
