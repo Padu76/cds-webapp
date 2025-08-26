@@ -235,10 +235,36 @@ export async function POST(request: NextRequest) {
   try {
     const { query } = await request.json();
     
-    if (!query || typeof query !== 'string') {
-      return NextResponse.json({ error: 'Query mancante' }, { status: 400 });
+    // Se query è vuota o undefined, restituisci tutti i documenti
+    if (!query || query.trim() === '') {
+      const documents = await getDocumentsFromDrive();
+      const results: DocumentSearchResult[] = [];
+      
+      // Processa tutti i documenti senza filtro di ricerca
+      for (const doc of documents) {
+        try {
+          const content = await parseDocument(doc);
+          const keywords = extractKeywords(content);
+          
+          results.push({
+            document: {
+              ...doc,
+              keywords,
+              content: content.substring(0, 1000) // Prime 1000 chars per preview
+            },
+            relevantSections: [content.substring(0, 300) + (content.length > 300 ? '...' : '')],
+            matchScore: 1 // Score neutrale per tutti i documenti
+          });
+          
+        } catch (error) {
+          console.error(`Errore processing documento ${doc.name}:`, error);
+        }
+      }
+      
+      return NextResponse.json(results);
     }
 
+    // Ricerca con query specifica (codice esistente)
     const documents = await getDocumentsFromDrive();
     const results: DocumentSearchResult[] = [];
     
