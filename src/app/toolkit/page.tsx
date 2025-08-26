@@ -7,6 +7,26 @@ import {
   Zap, Target
 } from 'lucide-react';
 
+// Tipi per i risultati
+interface CDSResults {
+  mlPerDose: string;
+  mlAcqua: number;
+  doseGiornaliera: string;
+  frequenza: string;
+  durata: string;
+  type: 'cds';
+}
+
+interface BMResults {
+  mgPerDose: number;
+  mgGiornalieri: number;
+  frequenza: string;
+  durata: string;
+  type: 'bm';
+}
+
+type CalculationResults = CDSResults | BMResults | null;
+
 const ToolkitPage = () => {
   const [activeCalculator, setActiveCalculator] = useState('cds');
   const [formData, setFormData] = useState({
@@ -40,8 +60,8 @@ const ToolkitPage = () => {
     };
   }, [isTimerRunning]);
 
-  // Calcolatore CDS - Fix arithmetic operations
-  const calculateCDS = () => {
+  // Calcolatore CDS
+  const calculateCDS = (): CDSResults | null => {
     const peso = parseFloat(formData.peso);
     if (!peso) return null;
 
@@ -65,12 +85,13 @@ const ToolkitPage = () => {
       mlAcqua: mlAcqua,
       doseGiornaliera: doseGiornaliera,
       frequenza: formData.frequenza,
-      durata: formData.durata
+      durata: formData.durata,
+      type: 'cds'
     };
   };
 
-  // Calcolatore Blu di Metilene - Fix arithmetic operations
-  const calculateBluMetilene = () => {
+  // Calcolatore Blu di Metilene
+  const calculateBluMetilene = (): BMResults | null => {
     const peso = parseFloat(formData.peso);
     if (!peso) return null;
 
@@ -91,11 +112,12 @@ const ToolkitPage = () => {
       mgPerDose: mgPerDose,
       mgGiornalieri: mgGiornalieri,
       frequenza: formData.patologia === 'neurologico' ? '1' : formData.frequenza,
-      durata: formData.durata
+      durata: formData.durata,
+      type: 'bm'
     };
   };
 
-  const currentResults = useMemo(() => {
+  const currentResults: CalculationResults = useMemo(() => {
     if (activeCalculator === 'cds') return calculateCDS();
     if (activeCalculator === 'bm') return calculateBluMetilene();
     return null;
@@ -253,7 +275,7 @@ const ToolkitPage = () => {
                   </h3>
                   
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {activeCalculator === 'cds' ? (
+                    {currentResults.type === 'cds' ? (
                       <>
                         <div className="text-center">
                           <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{currentResults.mlPerDose}ml</p>
@@ -300,7 +322,7 @@ const ToolkitPage = () => {
                       <div>
                         <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300">Note Importanti:</p>
                         <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">
-                          {activeCalculator === 'cds' 
+                          {currentResults.type === 'cds' 
                             ? "Assumere a stomaco vuoto, distanziare di 2 ore da vitamine/antiossidanti. Aumentare gradualmente se primo utilizzo."
                             : "Assumere con cibo per ridurre nausea. Può colorare temporaneamente urine di blu-verde. Evitare con inibitori MAO."
                           }
