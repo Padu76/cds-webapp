@@ -1,33 +1,176 @@
 "use client"
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, ArrowLeft, ExternalLink, Star, Download, Eye, Heart, Zap, Shield, Loader2, AlertCircle } from 'lucide-react';
-import Link from 'next/link';
-import { getCachedData, type Protocollo } from '@/lib/airtable';
+import { 
+  Search, Filter, AlertCircle, CheckCircle, 
+  FileText, ArrowLeft, Download, Eye, 
+  TrendingUp, Activity, Clock, Shield,
+  Loader2, RefreshCw
+} from 'lucide-react';
+
+// Credenziali Airtable integrate
+const AIRTABLE_BASE_ID = 'app5b8Z1mnHiTexSK';
+const AIRTABLE_API_KEY = 'patHBKeuMtAh47bl5.2c36bdd966f7a847ffe1f3242be4a19dbf7b1fd02bd42865d15d8dbb402dffac';
+const AIRTABLE_API_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}`;
+
+// Interfaccia Protocollo
+interface Protocollo {
+  id: string;
+  nome: string;
+  descrizione: string;
+  dosaggio: string;
+  sintomiCorrelati: string[];
+  pdfUrl: string;
+  efficacia: number;
+  note: string;
+  categoria: string;
+}
+
+// Headers per API Airtable
+const headers = {
+  'Authorization': `Bearer ${AIRTABLE_API_KEY}`,
+  'Content-Type': 'application/json',
+};
+
+// Utility functions
+const parseCommaSeparatedString = (str: string): string[] => {
+  if (!str) return [];
+  return str.split(',').map(item => item.trim()).filter(Boolean);
+};
+
+const safeParseInt = (value: any, defaultValue: number = 0): number => {
+  const parsed = parseInt(value);
+  return isNaN(parsed) ? defaultValue : parsed;
+};
+
+// Funzione per chiamate Airtable
+async function airtableRequest(endpoint: string, options: RequestInit = {}): Promise<any> {
+  try {
+    const response = await fetch(`${AIRTABLE_API_URL}${endpoint}`, {
+      ...options,
+      headers: {
+        ...headers,
+        ...options.headers,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Errore Airtable: ${response.status} - ${errorData.error?.message || response.statusText}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    console.error('Errore nella richiesta Airtable:', error);
+    throw error;
+  }
+}
+
+// Funzione per ottenere protocolli
+async function getProtocolli(): Promise<Protocollo[]> {
+  try {
+    const data = await airtableRequest('/protocolli');
+    
+    return data.records.map((record: any) => ({
+      id: record.id,
+      nome: record.fields.Nome || record.fields.nome || '',
+      descrizione: record.fields.Descrizione || record.fields.descrizione || '',
+      dosaggio: record.fields.Dosaggio || record.fields.dosaggio || '',
+      sintomiCorrelati: parseCommaSeparatedString(record.fields.Sintomi_Correlati || record.fields.sintomi_correlati || ''),
+      pdfUrl: record.fields.PDF_URL || record.fields.pdf_url || '',
+      efficacia: safeParseInt(record.fields.Efficacia || record.fields.efficacia),
+      note: record.fields.Note || record.fields.note || '',
+      categoria: record.fields.Categoria || record.fields.categoria || '',
+    }));
+  } catch (error) {
+    console.error('Errore nel recupero protocolli:', error);
+    throw error;
+  }
+}
+
+// Cache semplice
+const cache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minuti
+
+async function getCachedData<T>(fetcher: () => Promise<T>, key: string): Promise<T> {
+  const cached = cache.get(key);
+  const now = Date.now();
+  
+  if (cached && (now - cached.timestamp) < CACHE_TTL) {
+    return cached.data;
+  }
+  
+  try {
+    const data = await fetcher();
+    cache.set(key, { data, timestamp: now });
+    return data;
+  } catch (error) {
+    if (cached) {
+      return cached.data;
+    }
+    throw error;
+  }
+}
+
+// Test connessione Airtable
+async function checkAirtableConnection(): Promise<{
+  connected: boolean;
+  tablesAvailable: string[];
+  errors: string[];
+}> {
+  const tables = ['protocolli'];
+  const errors: string[] = [];
+  const available: string[] = [];
+  
+  for (const table of tables) {
+    try {
+      await airtableRequest(`/${table}?maxRecords=1`);
+      available.push(table);
+    } catch (error) {
+      errors.push(`${table}: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`);
+    }
+  }
+  
+  return {
+    connected: available.length > 0,
+    tablesAvailable: available,
+    errors
+  };
+}
 
 const ProtocolliPage = () => {
   const [protocols, setProtocols] = useState<Protocollo[]>([]);
   const [filteredProtocols, setFilteredProtocols] = useState<Protocollo[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedSubstance, setSelectedSubstance] = useState('all');
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [minEfficacia, setMinEfficacia] = useState(0);
-  const [darkMode, setDarkMode] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('Tutti');
+  const [selectedEfficacy, setSelectedEfficacy] = useState('Tutti');
+  const [connectionStatus, setConnectionStatus] = useState({ connected: false, errors: [] });
 
-  // Carica dati da Airtable usando la nuova API
+  // Carica protocolli da Airtable
   useEffect(() => {
     const loadProtocols = async () => {
       try {
         setLoading(true);
         setError(null);
-        const data = await getCachedData('protocolli');
+        
+        // Test connessione Airtable
+        const status = await checkAirtableConnection();
+        setConnectionStatus(status);
+        
+        if (!status.connected) {
+          throw new Error('Impossibile connettersi ad Airtable. Verificare credenziali.');
+        }
+        
+        const data = await getCachedData(() => getProtocolli(), 'protocolli');
         setProtocols(data);
         setFilteredProtocols(data);
       } catch (err) {
         console.error('Errore nel caricamento protocolli:', err);
-        setError(err instanceof Error ? err.message : 'Errore nel caricamento dei dati');
+        setError(err instanceof Error ? err.message : 'Errore sconosciuto');
+        // Dati fallback in caso di errore
+        setProtocols([]);
+        setFilteredProtocols([]);
       } finally {
         setLoading(false);
       }
@@ -36,6 +179,7 @@ const ProtocolliPage = () => {
     loadProtocols();
   }, []);
 
+  // Filtri
   useEffect(() => {
     let filtered = protocols;
 
@@ -44,125 +188,93 @@ const ProtocolliPage = () => {
       filtered = filtered.filter(protocol =>
         protocol.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
         protocol.descrizione.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        protocol.sintomiCorrelati.some(sintomo => 
-          sintomo.toLowerCase().includes(searchTerm.toLowerCase())
-        )
+        protocol.sintomiCorrelati.some(s => s.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
 
     // Filtro per categoria
-    if (selectedCategory !== 'all') {
+    if (selectedCategory !== 'Tutti') {
       filtered = filtered.filter(protocol => protocol.categoria === selectedCategory);
     }
 
     // Filtro per efficacia
-    filtered = filtered.filter(protocol => protocol.efficacia >= minEfficacia);
+    if (selectedEfficacy !== 'Tutti') {
+      const [min, max] = selectedEfficacy.split('-').map(Number);
+      filtered = filtered.filter(protocol => 
+        protocol.efficacia >= min && protocol.efficacia <= (max || 10)
+      );
+    }
 
     setFilteredProtocols(filtered);
-  }, [searchTerm, selectedSubstance, selectedCategory, minEfficacia, protocols]);
+  }, [protocols, searchTerm, selectedCategory, selectedEfficacy]);
 
-  const renderStars = (rating: number) => {
-    return Array.from({ length: 5 }, (_, i) => (
-      <Star
-        key={i}
-        className={`w-4 h-4 ${
-          i < rating ? 'text-yellow-400 fill-current' : 'text-gray-300'
-        }`}
-      />
-    ));
+  const getCategories = () => {
+    const categories = Array.from(new Set(protocols.map(p => p.categoria).filter(Boolean)));
+    return ['Tutti', ...categories];
   };
 
-  // Ottieni categorie uniche dai dati
-  const categories = Array.from(new Set(protocols.map(p => p.categoria))).filter(Boolean);
+  const getEfficacyColor = (efficacy: number) => {
+    if (efficacy >= 8) return 'text-green-600 bg-green-100';
+    if (efficacy >= 6) return 'text-yellow-600 bg-yellow-100';
+    return 'text-red-600 bg-red-100';
+  };
 
-  // Retry function
-  const retryLoad = async () => {
-    setError(null);
+  const retryConnection = async () => {
     setLoading(true);
+    setError(null);
+    
     try {
-      const data = await getCachedData('protocolli');
-      setProtocols(data);
-      setFilteredProtocols(data);
+      const status = await checkAirtableConnection();
+      setConnectionStatus(status);
+      
+      if (status.connected) {
+        const data = await getProtocolli();
+        setProtocols(data);
+        setFilteredProtocols(data);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Errore nel caricamento dei dati');
+      setError(err instanceof Error ? err.message : 'Errore nella riconnessione');
     } finally {
       setLoading(false);
     }
   };
 
-  // Loading State
   if (loading) {
     return (
-      <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
-        {/* Header */}
-        <header className={`sticky top-0 z-10 backdrop-blur-md transition-all duration-300 ${darkMode ? 'bg-gray-900/80' : 'bg-white/80'} border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-          <div className="max-w-7xl mx-auto px-4 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <Link href="/" className="flex items-center space-x-2 text-gray-600 hover:text-emerald-600 transition-colors">
-                  <ArrowLeft className="w-5 h-5" />
-                  <span>Torna alla Home</span>
-                </Link>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Heart className="w-6 h-6 text-emerald-600" />
-                <h1 className="text-xl font-bold bg-gradient-to-r from-emerald-600 to-cyan-600 bg-clip-text text-transparent">
-                  Protocolli
-                </h1>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        {/* Loading Content */}
-        <div className="max-w-7xl mx-auto px-4 py-12">
-          <div className="flex flex-col items-center justify-center min-h-[400px]">
-            <Loader2 className="w-12 h-12 animate-spin text-emerald-600 mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Caricamento protocolli...</h3>
-            <p className="text-gray-600 dark:text-gray-400">Connessione ad Airtable in corso</p>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-blue-900">
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+              Caricamento Protocolli
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400">
+              Connessione ad Airtable in corso...
+            </p>
           </div>
         </div>
       </div>
     );
   }
 
-  // Error State
   if (error) {
     return (
-      <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
-        {/* Header */}
-        <header className={`sticky top-0 z-10 backdrop-blur-md transition-all duration-300 ${darkMode ? 'bg-gray-900/80' : 'bg-white/80'} border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-          <div className="max-w-7xl mx-auto px-4 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <Link href="/" className="flex items-center space-x-2 text-gray-600 hover:text-emerald-600 transition-colors">
-                  <ArrowLeft className="w-5 h-5" />
-                  <span>Torna alla Home</span>
-                </Link>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Heart className="w-6 h-6 text-emerald-600" />
-                <h1 className="text-xl font-bold bg-gradient-to-r from-emerald-600 to-cyan-600 bg-clip-text text-transparent">
-                  Protocolli
-                </h1>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        {/* Error Content */}
-        <div className="max-w-7xl mx-auto px-4 py-12">
-          <div className="flex flex-col items-center justify-center min-h-[400px]">
-            <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Errore nel caricamento</h3>
-            <p className="text-gray-600 dark:text-gray-400 text-center mb-4">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-blue-900">
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center max-w-md">
+            <AlertCircle className="w-12 h-12 text-red-600 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+              Errore di Connessione
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
               {error}
             </p>
             <button
-              onClick={retryLoad}
-              className="bg-emerald-600 text-white px-6 py-2 rounded-lg hover:bg-emerald-700 transition-colors"
+              onClick={retryConnection}
+              className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
             >
-              Riprova
+              <RefreshCw className="w-4 h-4" />
+              <span>Riprova</span>
             </button>
           </div>
         </div>
@@ -171,246 +283,217 @@ const ProtocolliPage = () => {
   }
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-blue-900">
       {/* Header */}
-      <header className={`sticky top-0 z-10 backdrop-blur-md transition-all duration-300 ${darkMode ? 'bg-gray-900/80' : 'bg-white/80'} border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+      <header className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
-              <Link href="/" className="flex items-center space-x-2 text-gray-600 hover:text-emerald-600 transition-colors">
-                <ArrowLeft className="w-5 h-5" />
-                <span>Torna alla Home</span>
-              </Link>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Heart className="w-6 h-6 text-emerald-600" />
-              <h1 className="text-xl font-bold bg-gradient-to-r from-emerald-600 to-cyan-600 bg-clip-text text-transparent">
-                Protocolli
+              <a 
+                href="/" 
+                className="flex items-center space-x-2 text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+              >
+                <ArrowLeft size={20} />
+                <span>Home</span>
+              </a>
+              <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center space-x-2">
+                <FileText className="text-blue-600" size={28} />
+                <span>Protocolli CDS</span>
               </h1>
             </div>
-            <div className="text-sm text-gray-500">
-              {protocols.length} protocolli da Airtable
+            
+            {/* Connection Status */}
+            <div className="flex items-center space-x-2">
+              <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm ${
+                connectionStatus.connected 
+                  ? 'bg-green-100 text-green-700' 
+                  : 'bg-red-100 text-red-700'
+              }`}>
+                {connectionStatus.connected ? (
+                  <CheckCircle className="w-4 h-4" />
+                ) : (
+                  <AlertCircle className="w-4 h-4" />
+                )}
+                <span>{connectionStatus.connected ? 'Airtable Connesso' : 'Offline'}</span>
+              </div>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Search and Filters */}
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className={`rounded-2xl shadow-sm p-6 mb-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-          {/* Search Bar */}
-          <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <input
-              type="text"
-              placeholder="Cerca protocolli, sintomi o descrizioni..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className={`w-full pl-10 pr-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                darkMode 
-                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-              }`}
-            />
-          </div>
-
-          {/* Filter Toggle */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4 text-sm text-gray-600">
-              <span>Trovati {filteredProtocols.length} protocolli</span>
-            </div>
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center space-x-2 text-emerald-600 hover:text-emerald-700 transition-colors"
-            >
-              <Filter className="w-4 h-4" />
-              <span>Filtri</span>
-            </button>
-          </div>
-
-          {/* Filters */}
-          {showFilters && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-              {/* Categoria Filter */}
-              <div>
-                <label className="block text-sm font-medium mb-2">Categoria</label>
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className={`w-full px-3 py-2 rounded-lg border ${
-                    darkMode 
-                      ? 'bg-gray-700 border-gray-600 text-white' 
-                      : 'bg-white border-gray-300 text-gray-900'
-                  }`}
-                >
-                  <option value="all">Tutte le categorie</option>
-                  {categories.map(category => (
-                    <option key={category} value={category}>{category}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Efficacia Filter */}
-              <div>
-                <label className="block text-sm font-medium mb-2">Efficacia minima</label>
-                <input
-                  type="range"
-                  min="0"
-                  max="10"
-                  value={minEfficacia}
-                  onChange={(e) => setMinEfficacia(Number(e.target.value))}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-xs text-gray-500 mt-1">
-                  <span>0</span>
-                  <span className="font-medium">{minEfficacia}</span>
-                  <span>10</span>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          {[
+            { label: 'Totale Protocolli', value: protocols.length, icon: FileText, color: 'blue' },
+            { label: 'Protocolli Filtrati', value: filteredProtocols.length, icon: Filter, color: 'green' },
+            { label: 'Efficacia Media', value: protocols.length > 0 ? (protocols.reduce((sum, p) => sum + p.efficacia, 0) / protocols.length).toFixed(1) : '0', icon: TrendingUp, color: 'purple' },
+            { label: 'Categorie', value: getCategories().length - 1, icon: Activity, color: 'orange' }
+          ].map((stat, index) => (
+            <div key={index} className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">{stat.label}</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{stat.value}</p>
                 </div>
-              </div>
-
-              {/* Reset Filters */}
-              <div className="flex items-end">
-                <button
-                  onClick={() => {
-                    setSearchTerm('');
-                    setSelectedSubstance('all');
-                    setSelectedCategory('all');
-                    setMinEfficacia(0);
-                  }}
-                  className="w-full px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-lg transition-colors"
-                >
-                  Reset Filtri
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Protocols Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredProtocols.map((protocol) => (
-            <div key={protocol.id} className={`rounded-2xl shadow-sm overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'}`}>
-              {/* Header */}
-              <div className="p-6 pb-4">
-                <div className="flex items-start justify-between mb-3">
-                  <h3 className="text-lg font-semibold leading-tight">{protocol.nome}</h3>
-                </div>
-                
-                <div className="flex items-center justify-between mb-3">
-                  <span className={`px-2 py-1 rounded-lg text-xs font-medium ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
-                    {protocol.categoria}
-                  </span>
-                  <div className="flex items-center space-x-1">
-                    {renderStars(protocol.efficacia)}
-                    <span className="text-sm text-gray-500 ml-1">({protocol.efficacia}/10)</span>
-                  </div>
-                </div>
-
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-3">
-                  {protocol.descrizione}
-                </p>
-              </div>
-
-              {/* Dosaggio */}
-              <div className="px-6 pb-4">
-                <div className="mb-3">
-                  <h4 className="text-sm font-semibold mb-1 flex items-center">
-                    <Zap className="w-4 h-4 mr-1 text-emerald-600" />
-                    Dosaggio
-                  </h4>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {protocol.dosaggio}
-                  </p>
-                </div>
-
-                {/* Sintomi Correlati */}
-                {protocol.sintomiCorrelati.length > 0 && (
-                  <div className="mb-4">
-                    <h4 className="text-sm font-semibold mb-2">Sintomi trattati:</h4>
-                    <div className="flex flex-wrap gap-1">
-                      {protocol.sintomiCorrelati.map((sintomo, index) => (
-                        <span key={index} className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full">
-                          {sintomo}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Note */}
-                {protocol.note && (
-                  <div className="mb-4">
-                    <h4 className="text-sm font-semibold mb-1 flex items-center">
-                      <Shield className="w-4 h-4 mr-1 text-amber-600" />
-                      Note importanti
-                    </h4>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      {protocol.note}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Actions */}
-              <div className="px-6 pb-6 pt-2 border-t border-gray-200 dark:border-gray-700">
-                <div className="flex space-x-3">
-                  {protocol.pdfUrl && (
-                    <a
-                      href={protocol.pdfUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-1 bg-gradient-to-r from-emerald-500 to-cyan-500 text-white px-4 py-2 rounded-lg hover:from-emerald-600 hover:to-cyan-600 transition-all duration-300 shadow-md hover:shadow-lg flex items-center justify-center space-x-2 text-sm"
-                    >
-                      <Download className="w-4 h-4" />
-                      <span>Scarica PDF</span>
-                    </a>
-                  )}
-                  <button className="px-4 py-2 border border-emerald-500 text-emerald-600 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors flex items-center space-x-1 text-sm">
-                    <Eye className="w-4 h-4" />
-                    <span>Dettagli</span>
-                  </button>
+                <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900">
+                  <stat.icon className="text-blue-600 dark:text-blue-400" size={24} />
                 </div>
               </div>
             </div>
           ))}
         </div>
 
-        {/* No Results */}
-        {filteredProtocols.length === 0 && protocols.length > 0 && (
-          <div className="text-center py-12">
-            <div className="w-24 h-24 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Search className="w-12 h-12 text-gray-400" />
-            </div>
-            <h3 className="text-lg font-semibold mb-2">Nessun protocollo trovato</h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">
-              Prova a modificare i filtri o la ricerca per trovare protocolli correlati
-            </p>
-            <button
-              onClick={() => {
-                setSearchTerm('');
-                setSelectedSubstance('all');
-                setSelectedCategory('all');
-                setMinEfficacia(0);
-              }}
-              className="bg-emerald-600 text-white px-6 py-2 rounded-lg hover:bg-emerald-700 transition-colors"
-            >
-              Reset Filtri
-            </button>
-          </div>
-        )}
+        {/* Filtri */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 mb-8">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center space-x-2">
+            <Filter className="text-blue-600" size={24} />
+            <span>Filtri e Ricerca</span>
+          </h2>
 
-        {/* Empty State */}
-        {protocols.length === 0 && !loading && !error && (
-          <div className="text-center py-12">
-            <div className="w-24 h-24 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Heart className="w-12 h-12 text-gray-400" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Ricerca */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              <input
+                type="text"
+                placeholder="Cerca protocolli, sintomi..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
             </div>
-            <h3 className="text-lg font-semibold mb-2">Nessun protocollo disponibile</h3>
-            <p className="text-gray-600 dark:text-gray-400">
-              I protocolli verranno visualizzati qui una volta caricati nel database
-            </p>
+
+            {/* Categoria */}
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+            >
+              {getCategories().map(category => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </select>
+
+            {/* Efficacia */}
+            <select
+              value={selectedEfficacy}
+              onChange={(e) => setSelectedEfficacy(e.target.value)}
+              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="Tutti">Tutte le efficacie</option>
+              <option value="8-10">Alta (8-10)</option>
+              <option value="6-7">Media (6-7)</option>
+              <option value="1-5">Bassa (1-5)</option>
+            </select>
           </div>
-        )}
+        </div>
+
+        {/* Lista Protocolli */}
+        <div className="space-y-6">
+          {filteredProtocols.length === 0 ? (
+            <div className="text-center py-12">
+              <FileText className="mx-auto text-gray-400 mb-4" size={48} />
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                Nessun protocollo trovato
+              </h3>
+              <p className="text-gray-600 dark:text-gray-400">
+                Prova a modificare i filtri di ricerca
+              </p>
+            </div>
+          ) : (
+            filteredProtocols.map((protocol) => (
+              <div key={protocol.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-xl transition-all duration-300">
+                <div className="p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1">
+                      <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                        {protocol.nome}
+                      </h3>
+                      <p className="text-gray-600 dark:text-gray-400 mb-3">
+                        {protocol.descrizione}
+                      </p>
+                    </div>
+                    
+                    <div className={`px-3 py-1 rounded-full text-sm font-medium ${getEfficacyColor(protocol.efficacia)}`}>
+                      Efficacia: {protocol.efficacia}/10
+                    </div>
+                  </div>
+
+                  {/* Dosaggio */}
+                  <div className="mb-4">
+                    <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center space-x-1">
+                      <Shield size={16} />
+                      <span>Dosaggio</span>
+                    </h4>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                      {protocol.dosaggio}
+                    </p>
+                  </div>
+
+                  {/* Sintomi Correlati */}
+                  {protocol.sintomiCorrelati.length > 0 && (
+                    <div className="mb-4">
+                      <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center space-x-1">
+                        <Activity size={16} />
+                        <span>Sintomi Correlati</span>
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {protocol.sintomiCorrelati.map((sintomo, index) => (
+                          <span key={index} className="px-3 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                            {sintomo}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Note */}
+                  {protocol.note && (
+                    <div className="mb-4">
+                      <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center space-x-1">
+                        <Clock size={16} />
+                        <span>Note</span>
+                      </h4>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                        {protocol.note}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
+                      <span className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded">
+                        {protocol.categoria || 'Generale'}
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center space-x-3">
+                      {protocol.pdfUrl && (
+                        <a
+                          href={protocol.pdfUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center space-x-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
+                        >
+                          <Download size={16} />
+                          <span>PDF</span>
+                        </a>
+                      )}
+                      
+                      <button className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
+                        <Eye size={16} />
+                        <span>Dettagli</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );
