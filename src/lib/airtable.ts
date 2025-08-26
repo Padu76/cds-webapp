@@ -10,6 +10,7 @@ export interface Protocollo {
   pdfUrl: string;
   efficacia: number;
   note: string;
+  categoria: string;
 }
 
 export interface Sintomo {
@@ -159,6 +160,7 @@ export async function getProtocolli(): Promise<Protocollo[]> {
       pdfUrl: record.fields.PDF_URL || record.fields.pdf_url || '',
       efficacia: safeParseInt(record.fields.Efficacia || record.fields.efficacia),
       note: record.fields.Note || record.fields.note || '',
+      categoria: record.fields.Categoria || record.fields.categoria || '',
     }));
   } catch (error) {
     console.error('Errore nel recupero protocolli:', error);
@@ -316,6 +318,7 @@ export async function searchProtocolli(query: string): Promise<Protocollo[]> {
       pdfUrl: record.fields.PDF_URL || '',
       efficacia: safeParseInt(record.fields.Efficacia),
       note: record.fields.Note || '',
+      categoria: record.fields.Categoria || '',
     }));
   } catch (error) {
     console.error('Errore nella ricerca protocolli:', error);
