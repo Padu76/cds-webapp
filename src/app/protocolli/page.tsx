@@ -7,9 +7,9 @@ import {
   Loader2, RefreshCw
 } from 'lucide-react';
 
-// Credenziali Airtable integrate
-const AIRTABLE_BASE_ID = 'app5b8Z1mnHiTexSK';
-const AIRTABLE_API_KEY = 'patHBKeuMtAh47bl5.2c36bdd966f7a847ffe1f3242be4a19dbf7b1fd02bd42865d15d8dbb402dffac';
+// Credenziali da variabili d'ambiente
+const AIRTABLE_BASE_ID = process.env.NEXT_PUBLIC_AIRTABLE_BASE_ID;
+const AIRTABLE_API_KEY = process.env.NEXT_PUBLIC_AIRTABLE_API_KEY;
 const AIRTABLE_API_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}`;
 
 // Interfaccia Protocollo
@@ -44,6 +44,10 @@ const safeParseInt = (value: any, defaultValue: number = 0): number => {
 
 // Funzione per chiamate Airtable
 async function airtableRequest(endpoint: string, options: RequestInit = {}): Promise<any> {
+  if (!AIRTABLE_BASE_ID || !AIRTABLE_API_KEY) {
+    throw new Error('Variabili d\'ambiente Airtable mancanti');
+  }
+
   try {
     const response = await fetch(`${AIRTABLE_API_URL}${endpoint}`, {
       ...options,
@@ -120,6 +124,14 @@ async function checkAirtableConnection(): Promise<{
   const tables = ['protocolli'];
   const errors: string[] = [];
   const available: string[] = [];
+  
+  if (!AIRTABLE_BASE_ID || !AIRTABLE_API_KEY) {
+    return {
+      connected: false,
+      tablesAvailable: [],
+      errors: ['Variabili d\'ambiente Airtable mancanti']
+    };
+  }
   
   for (const table of tables) {
     try {
@@ -273,6 +285,16 @@ const ProtocolliPage = () => {
             <p className="text-gray-600 dark:text-gray-400 mb-4">
               {error}
             </p>
+            {connectionStatus.errors.length > 0 && (
+              <div className="mb-4 text-left">
+                <p className="text-sm text-red-600 mb-2">Dettagli errori:</p>
+                <ul className="text-xs text-red-500 space-y-1">
+                  {connectionStatus.errors.map((err, index) => (
+                    <li key={index}>• {err}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <button
               onClick={retryConnection}
               className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
