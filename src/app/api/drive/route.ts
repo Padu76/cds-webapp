@@ -269,7 +269,7 @@ export async function POST(request: NextRequest) {
     const results: DocumentSearchResult[] = [];
     
     const lowerQuery = query.toLowerCase();
-    const queryWords = lowerQuery.split(/\s+/).filter(w => w.length > 2);
+    const queryWords = lowerQuery.split(/\s+/).filter((w: string) => w.length > 2);
 
     for (const doc of documents) {
       try {
