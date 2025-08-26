@@ -4,7 +4,7 @@ import {
   Send, Bot, User, Loader2, Search, FileText, Heart, ArrowLeft, 
   AlertCircle, RefreshCw, Database, Activity, BookOpen, 
   MessageCircle, FlaskConical, Calculator, CheckCircle2,
-  AlertTriangle, Moon, Sun
+  AlertTriangle, Moon, Sun, File, Folder, Link
 } from 'lucide-react';
 import Link from 'next/link';
 import { 
@@ -20,6 +20,13 @@ import {
   type FAQ,
   type Dosaggio
 } from '@/lib/airtable';
+import {
+  searchDocuments,
+  formatDocumentsForAI,
+  checkGoogleDriveConnection,
+  type DocumentSearchResult,
+  type ParsedDocument
+} from '@/lib/document-parser';
 
 interface Message {
   id: string;
@@ -35,6 +42,7 @@ interface Message {
     faq: FAQ[];
     dosaggi: Dosaggio[];
   };
+  driveDocuments?: DocumentSearchResult[];
   isLoading?: boolean;
   isError?: boolean;
 }
@@ -46,12 +54,19 @@ interface DatabaseStatus {
   errors: string[];
 }
 
+interface DriveStatus {
+  connected: boolean;
+  documentsFound: number;
+  supportedTypes: string[];
+  errors: string[];
+}
+
 const ChatAI = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       role: 'assistant',
-      content: 'Ciao! Sono il tuo assistente AI specializzato in CDS e Blu di Metilene.\n\nHo accesso completo al tuo database con:\n• Protocolli terapeutici dettagliati\n• Sintomi e correlazioni\n• Testimonianze reali di pazienti\n• Ricerche scientifiche aggiornate\n• FAQ con risposte esperte\n• Calcolatori di dosaggio personalizzati\n• Documentazione tecnica\n\nPosso aiutarti con:\n- Protocolli specifici per patologie\n- Dosaggi personalizzati per peso\n- Confronti CDS vs Blu di Metilene\n- Controindicazioni e sicurezza\n- Evidenze scientifiche\n\nCosa vuoi sapere?',
+      content: 'Ciao! Sono il tuo assistente AI specializzato in CDS e Blu di Metilene.\n\nHo accesso completo al tuo database con:\n• Protocolli terapeutici dettagliati\n• Sintomi e correlazioni\n• Testimonianze reali di pazienti\n• Ricerche scientifiche aggiornate\n• FAQ con risposte esperte\n• Calcolatori di dosaggio personalizzati\n• Documentazione tecnica\n• Documenti PDF, Word, Excel dal tuo Google Drive\n\nPosso aiutarti con:\n- Protocolli specifici per patologie\n- Dosaggi personalizzati per peso\n- Confronti CDS vs Blu di Metilene\n- Controindicazioni e sicurezza\n- Evidenze scientifiche\n- Ricerche nei tuoi documenti personali\n\nCosa vuoi sapere?',
       timestamp: new Date()
     }
   ]);
@@ -62,6 +77,12 @@ const ChatAI = () => {
     connected: false,
     tablesLoaded: 0,
     totalTables: 7,
+    errors: []
+  });
+  const [driveStatus, setDriveStatus] = useState<DriveStatus>({
+    connected: false,
+    documentsFound: 0,
+    supportedTypes: [],
     errors: []
   });
   const [showDbStatus, setShowDbStatus] = useState(false);
@@ -76,77 +97,123 @@ const ChatAI = () => {
     scrollToBottom();
   }, [messages]);
 
-  // Verifica connessione database all'avvio
+  // Verifica connessioni all'avvio
   useEffect(() => {
-    const initializeDatabase = async () => {
+    const initializeSources = async () => {
+      // Test Airtable
       try {
-        const healthCheck = await checkAirtableConnection();
+        const airtableCheck = await checkAirtableConnection();
         setDbStatus({
-          connected: healthCheck.connected,
-          tablesLoaded: healthCheck.tablesAvailable.length,
+          connected: airtableCheck.connected,
+          tablesLoaded: airtableCheck.tablesAvailable.length,
           totalTables: 7,
-          errors: healthCheck.errors
+          errors: airtableCheck.errors
         });
 
-        // Pre-carica i dati più importanti usando la nuova API
-        if (healthCheck.connected) {
+        if (airtableCheck.connected) {
           Promise.all([
             getCachedData('protocolli'),
             getCachedData('sintomi'),
             getCachedData('faq')
           ]).catch(err => {
-            console.warn('Errore nel precaricamento dati:', err);
+            console.warn('Errore nel precaricamento dati Airtable:', err);
           });
         }
       } catch (error) {
         setDbStatus(prev => ({
           ...prev,
           connected: false,
-          errors: [`Errore di connessione: ${error instanceof Error ? error.message : 'Sconosciuto'}`]
+          errors: [`Errore Airtable: ${error instanceof Error ? error.message : 'Sconosciuto'}`]
+        }));
+      }
+
+      // Test Google Drive
+      try {
+        const driveCheck = await checkGoogleDriveConnection();
+        setDriveStatus(driveCheck);
+      } catch (error) {
+        setDriveStatus(prev => ({
+          ...prev,
+          connected: false,
+          errors: [`Errore Google Drive: ${error instanceof Error ? error.message : 'Sconosciuto'}`]
         }));
       }
     };
     
-    initializeDatabase();
+    initializeSources();
   }, []);
 
-  // Simulazione chiamata AI (locale) - sostituisci con vera API
-  const generateAIResponse = async (userMessage: string, contextData: string): Promise<string> => {
-    // Simulazione di processing per demo
+  // Generazione risposta AI migliorata con documenti
+  const generateAIResponse = async (
+    userMessage: string, 
+    contextData: string, 
+    driveDocuments?: DocumentSearchResult[]
+  ): Promise<string> => {
     await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 1000));
 
-    // Analisi semplice del messaggio per demo
     const lowerMessage = userMessage.toLowerCase();
-    
-    // Risposte basate su keyword matching per demo
+    let response = '';
+
+    // Informazioni da documenti Drive se presenti
+    let driveInfo = '';
+    if (driveDocuments && driveDocuments.length > 0) {
+      driveInfo = '\n\n📁 **DOCUMENTI CONSULTATI:**\n';
+      driveDocuments.slice(0, 3).forEach((doc, index) => {
+        driveInfo += `${index + 1}. ${doc.document.name} (${doc.document.type.toUpperCase()})\n`;
+        if (doc.relevantSections.length > 0) {
+          driveInfo += `   Contenuto rilevante: ${doc.relevantSections[0].substring(0, 150)}...\n`;
+        }
+      });
+    }
+
+    // Risposte specifiche potenziate con documenti
     if (lowerMessage.includes('dosaggio') || lowerMessage.includes('dose')) {
-      return `Basandomi sui dati del tuo database, ecco le informazioni sui dosaggi:\n\n**Dosaggio CDS Standard:**\n• Adulto 70kg: 2-3ml CDS in 200ml acqua\n• Frequenza: 3 volte al giorno\n• Durata: 14-21 giorni per infezioni acute\n\n**Dosaggio Blu di Metilene:**\n• Standard: 1-2mg per kg di peso corporeo\n• Persona 70kg: 70-140mg al giorno\n• Assumere con il cibo per ridurre nausea\n\n**Importante:** Iniziare sempre con dosaggi minimi e aumentare gradualmente. Monitorare la tolleranza del paziente.\n\nVuoi un calcolo personalizzato per peso specifico?`;
+      response = `Basandomi sui dati del database e sui documenti Google Drive, ecco le informazioni sui dosaggi:\n\n**DOSAGGIO CDS STANDARD:**\n• Adulto 70kg: 2-3ml CDS in 200ml acqua\n• Frequenza: 3 volte al giorno\n• Durata: 14-21 giorni per infezioni acute\n\n**DOSAGGIO BLU DI METILENE:**\n• Standard: 1-2mg per kg di peso corporeo\n• Persona 70kg: 70-140mg al giorno\n• Assumere con il cibo per ridurre nausea\n\n**IMPORTANTE:** Iniziare sempre con dosaggi minimi e aumentare gradualmente. Monitorare la tolleranza del paziente.${driveInfo}\n\nVuoi un calcolo personalizzato per peso specifico?`;
+      
+    } else if (lowerMessage.includes('differenz') || lowerMessage.includes('confronto') || lowerMessage.includes('vs')) {
+      response = `**CDS vs BLU DI METILENE - Analisi Comparativa:**\n\n**CDS (Diossido di Cloro):**\n• Azione: Antimicrobica potente, ossidazione selettiva\n• Meglio per: Infezioni batteriche, virali, fungine\n• Vantaggi: Ampio spettro, non crea resistenze\n• pH neutro, ben tollerato\n\n**BLU DI METILENE:**\n• Azione: Neuroprotettiva, antimicrobica, antiossidante\n• Meglio per: Disturbi neurologici, supporto cognitivo\n• Vantaggi: Attraversa barriera ematoencefalica\n• Colorazione temporanea urine (normale)\n\n**QUANDO SCEGLIERE:**\n• Infezioni acute → **CDS**\n• Problemi neurologici → **BLU DI METILENE**\n• Patologie croniche → Spesso **combinazione**${driveInfo}\n\nVuoi approfondire una specifica applicazione?`;
+      
+    } else if (lowerMessage.includes('sicurezza') || lowerMessage.includes('controindicazioni')) {
+      response = `**PROFILO SICUREZZA CDS E BLU DI METILENE:**\n\n**CDS - Controindicazioni:**\n• Gravidanza e allattamento (mancano studi)\n• Severe insufficienze renali/epatiche\n• Interazione con alcuni farmaci (distanziare 2h)\n• Non superare 6ml/giorno per adulto\n\n**BLU DI METILENE - Controindicazioni:**\n• Deficit G6PD (può causare emolisi)\n• Gravidanza e allattamento\n• Interazione con SSRI (rischio sindrome serotoninergica)\n• Non superare 7mg/kg peso corporeo\n\n**EFFETTI COLLATERALI COMUNI:**\n• CDS: Nausea lieve, diarrea iniziale\n• BM: Urine blu-verdi (temporaneo), mal di testa lieve\n\n**MONITORAGGIO RACCOMANDATO:**\n• Funzioni epatiche e renali nei trattamenti lunghi\n• Emocromo completo ogni 30 giorni${driveInfo}\n\n**Sempre consultare un medico esperto prima dell'uso!**`;
+      
+    } else if (lowerMessage.includes('documento') || lowerMessage.includes('file') || lowerMessage.includes('pdf')) {
+      if (driveDocuments && driveDocuments.length > 0) {
+        response = `Ho trovato ${driveDocuments.length} documento/i rilevanti nel tuo Google Drive:\n\n`;
+        driveDocuments.forEach((doc, index) => {
+          response += `**${index + 1}. ${doc.document.name}** (${doc.document.type.toUpperCase()})\n`;
+          response += `• Rilevanza: ${doc.matchScore} punti\n`;
+          response += `• Parole chiave trovate: ${doc.document.keywords?.slice(0, 5).join(', ') || 'N/A'}\n`;
+          if (doc.relevantSections.length > 0) {
+            response += `• Estratto: "${doc.relevantSections[0].substring(0, 200)}..."\n`;
+          }
+          response += `• Link: ${doc.document.url}\n\n`;
+        });
+        response += `Vuoi che approfondisca il contenuto di un documento specifico?`;
+      } else {
+        response = `Non ho trovato documenti specifici per "${userMessage}" nel tuo Google Drive.\n\nProva con termini come:\n• "protocollo CDS"\n• "blu di metilene ricerca"\n• "dosaggi"\n• "controindicazioni"\n\nOppure dimmi il nome specifico del documento che stai cercando.`;
+      }
+      
+    } else {
+      response = `Ho analizzato la tua richiesta consultando:\n• Database Airtable (${contextData ? 'dati trovati' : 'nessun dato specifico'})\n• Google Drive (${driveDocuments?.length || 0} documenti rilevanti)\n\n`;
+      
+      if (driveDocuments && driveDocuments.length > 0) {
+        response += `Dai tuoi documenti personali ho estratto informazioni rilevanti che integrano i dati del database.${driveInfo}`;
+      }
+      
+      response += `\n\nPer risposte più specifiche, prova domande come:\n• "Protocollo CDS per artrite"\n• "Dosaggio blu di metilene 80kg"\n• "Controindicazioni CDS gravidanza"\n• "Cerca documenti su [argomento]"`;
     }
-    
-    if (lowerMessage.includes('differenz') || lowerMessage.includes('confronto') || lowerMessage.includes('vs')) {
-      return `**CDS vs BLU DI METILENE - Analisi Comparativa:**\n\n**CDS (Diossido di Cloro):**\n• Azione: Antimicrobica potente, ossidazione selettiva\n• Meglio per: Infezioni batteriche, virali, fungine\n• Vantaggi: Ampio spettro, non crea resistenze\n• pH neutro, ben tollerato\n\n**BLU DI METILENE:**\n• Azione: Neuroprotettiva, antimicrobica, antiossidante\n• Meglio per: Disturbi neurologici, supporto cognitivo\n• Vantaggi: Attraversa barriera ematoencefalica\n• Colorazione temporanea urine (normale)\n\n**QUANDO SCEGLIERE:**\n• Infezioni acute → **CDS**\n• Problemi neurologici → **BLU DI METILENE**\n• Patologie croniche → Spesso **combinazione**\n\nVuoi approfondire una specifica applicazione?`;
-    }
-    
-    if (lowerMessage.includes('sicurezza') || lowerMessage.includes('controindicazioni')) {
-      return `**PROFILO SICUREZZA CDS E BLU DI METILENE:**\n\n**CDS - Controindicazioni:**\n• Gravidanza e allattamento (mancano studi)\n• Severe insufficienze renali/epatiche\n• Interazione con alcuni farmaci (distanziare 2h)\n• Non superare 6ml/giorno per adulto\n\n**BLU DI METILENE - Controindicazioni:**\n• Deficit G6PD (può causare emolisi)\n• Gravidanza e allattamento\n• Interazione con SSRI (rischio sindrome serotoninergica)\n• Non superare 7mg/kg peso corporeo\n\n**EFFETTI COLLATERALI COMUNI:**\n• CDS: Nausea lieve, diarrea iniziale\n• BM: Urine blu-verdi (temporaneo), mal di testa lieve\n\n**MONITORAGGIO RACCOMANDATO:**\n• Funzioni epatiche e renali nei trattamenti lunghi\n• Emocromo completo ogni 30 giorni\n\n**Sempre consultare un medico esperto prima dell'uso!**`;
-    }
-    
-    if (lowerMessage.includes('artrite') || lowerMessage.includes('reumatoide')) {
-      return `**PROTOCOLLI PER ARTRITE REUMATOIDE:**\n\n**Protocollo Primario - CDS:**\n• Dosaggio: 2ml CDS in 250ml acqua\n• Frequenza: 6 volte al giorno\n• Durata: 21 giorni iniziali\n• Monitoraggio: VES, PCR, dolore articolare\n\n**Protocollo Supporto - Blu di Metilene:**\n• Dosaggio: 1.5mg per kg peso corporeo\n• Frequenza: 1 volta al giorno\n• Combinare con antinfiammatori naturali\n\n**Dalle testimonianze del database:**\n• Riduzione dolore 85% in 45 giorni\n• Miglioramento mobilità articolare\n• Sospensione graduale di farmaci tradizionali\n• Normalizzazione markers infiammatori\n\n**Note di sicurezza:**\n• Iniziare gradualmente per valutare tolleranza\n• Monitorare pressione arteriosa\n• Evitare se in gravidanza`;
-    }
-    
-    // Risposta generica con i dati del database
-    return `Ho analizzato la tua richiesta nel database e trovato informazioni rilevanti.\n\n${contextData.substring(0, 800)}...\n\nQueste informazioni provengono direttamente dal tuo database. Vuoi che approfondisca qualche aspetto specifico?\n\nSuggerimento: Prova a chiedere qualcosa di più specifico come "dosaggio CDS per artrite" o "protocollo blu di metilene per Alzheimer".`;
+
+    return response;
   };
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return;
 
-    if (!dbStatus.connected) {
+    if (!dbStatus.connected && !driveStatus.connected) {
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         role: 'assistant',
-        content: 'Database non connesso. Verifica le credenziali Airtable nelle variabili d\'ambiente e ricarica la pagina.',
+        content: 'Nessuna fonte dati connessa. Verifica:\n• Credenziali Airtable nelle variabili d\'ambiente\n• Credenziali Google Drive\n• Connessione internet\n\nRicarica la pagina per riprovare.',
         timestamp: new Date(),
         isError: true
       }]);
@@ -160,10 +227,8 @@ const ChatAI = () => {
       timestamp: new Date()
     };
 
-    // Aggiungi messaggio utente
     setMessages(prev => [...prev, userMessage]);
     
-    // Crea messaggio AI con loading
     const loadingMessage: Message = {
       id: (Date.now() + 1).toString(),
       role: 'assistant',
@@ -179,34 +244,60 @@ const ChatAI = () => {
     setIsLoading(true);
 
     try {
-      // Cerca dati correlati nel database
-      const searchResults = await searchAllData(currentInput);
+      // Ricerca parallela in tutte le fonti
+      const [airtableResults, driveResults] = await Promise.allSettled([
+        dbStatus.connected ? searchAllData(currentInput) : null,
+        driveStatus.connected ? searchDocuments(currentInput) : null
+      ]);
       
-      // Formatta i dati per l'AI
-      const contextData = formatDataForAI(searchResults);
+      // Processa risultati Airtable
+      const airtableData = airtableResults.status === 'fulfilled' && airtableResults.value ? 
+        airtableResults.value : {
+          protocolli: [], sintomi: [], documentazione: [], testimonianze: [],
+          ricerche: [], faq: [], dosaggi: []
+        };
       
-      // Aggiorna cronologia conversazione
+      // Processa risultati Google Drive
+      const driveData = driveResults.status === 'fulfilled' && driveResults.value ? 
+        driveResults.value : [];
+      
+      // Formatta dati per AI
+      const contextData = formatDataForAI(airtableData);
+      const driveContextData = driveData.length > 0 ? 
+        formatDocumentsForAI(driveData.map(d => ({
+          metadata: d.document,
+          content: d.document.content || '',
+          sections: d.relevantSections,
+          keywords: d.document.keywords || [],
+          summary: d.document.name
+        })), currentInput) : '';
+      
+      // Aggiorna cronologia
       const newHistory = [
         ...conversationHistory,
         { role: 'user', content: currentInput }
-      ].slice(-10); // Mantieni solo gli ultimi 10 scambi
+      ].slice(-10);
       
       // Genera risposta AI
-      const aiResponse = await generateAIResponse(currentInput, contextData);
+      const aiResponse = await generateAIResponse(
+        currentInput, 
+        contextData + '\n\n' + driveContextData,
+        driveData
+      );
       
-      // Aggiorna cronologia con risposta
       setConversationHistory([
         ...newHistory,
         { role: 'assistant', content: aiResponse }
       ]);
       
-      // Aggiorna il messaggio con la risposta
+      // Aggiorna messaggio con risposta
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: aiResponse,
         timestamp: new Date(),
-        relatedData: searchResults
+        relatedData: airtableData,
+        driveDocuments: driveData
       };
 
       setMessages(prev => prev.map(msg => 
@@ -218,7 +309,7 @@ const ChatAI = () => {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `Si è verificato un errore: ${error instanceof Error ? error.message : 'Errore sconosciuto'}.\n\nPossibili cause:\n• Problema di connessione al database\n• Tabelle Airtable non accessibili\n• Configurazione API non corretta\n\nRiprova tra poco.`,
+        content: `Si è verificato un errore: ${error instanceof Error ? error.message : 'Errore sconosciuto'}.\n\nPossibili cause:\n• Problema di connessione\n• Configurazione API non corretta\n• Limite rate raggiunti\n\nRiprova tra poco.`,
         timestamp: new Date(),
         isError: true
       };
@@ -247,35 +338,41 @@ const ChatAI = () => {
 
   const retryConnection = async () => {
     setDbStatus(prev => ({ ...prev, connected: false, errors: [] }));
+    setDriveStatus(prev => ({ ...prev, connected: false, errors: [] }));
+    
     try {
-      const healthCheck = await checkAirtableConnection();
+      const [airtableCheck, driveCheck] = await Promise.all([
+        checkAirtableConnection(),
+        checkGoogleDriveConnection()
+      ]);
+      
       setDbStatus({
-        connected: healthCheck.connected,
-        tablesLoaded: healthCheck.tablesAvailable.length,
+        connected: airtableCheck.connected,
+        tablesLoaded: airtableCheck.tablesAvailable.length,
         totalTables: 7,
-        errors: healthCheck.errors
+        errors: airtableCheck.errors
       });
+      
+      setDriveStatus(driveCheck);
+      
     } catch (error) {
-      setDbStatus(prev => ({
-        ...prev,
-        errors: [`Errore: ${error instanceof Error ? error.message : 'Sconosciuto'}`]
-      }));
+      console.error('Errore nel retry connessioni:', error);
     }
   };
 
   const quickQuestions = [
-    "Dosaggio CDS per 70kg adulto?",
+    "Cerca documenti su artrite",
+    "Dosaggio CDS per 70kg adulto?", 
     "Differenze CDS vs Blu di Metilene",
-    "Protocollo per infiammazione cronica",
     "Controindicazioni blu di metilene",
-    "Come preparare CDS in sicurezza?",
-    "Testimonianze artrite reumatoide"
+    "Protocolli nei miei PDF",
+    "Testimonianze Google Drive"
   ];
 
-  const getStatusIcon = () => {
-    if (dbStatus.connected && dbStatus.tablesLoaded === dbStatus.totalTables) {
+  const getStatusIcon = (connected: boolean, hasData: boolean = true) => {
+    if (connected && hasData) {
       return <CheckCircle2 className="w-4 h-4 text-green-500" />;
-    } else if (dbStatus.connected && dbStatus.tablesLoaded > 0) {
+    } else if (connected) {
       return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
     }
     return <AlertCircle className="w-4 h-4 text-red-500" />;
@@ -300,18 +397,38 @@ const ChatAI = () => {
                 CDS AI Assistant
               </h1>
               
-              {/* Database Status */}
-              <button
-                onClick={() => setShowDbStatus(!showDbStatus)}
-                className={`flex items-center space-x-2 px-3 py-1 rounded-lg text-xs ${
-                  dbStatus.connected 
-                    ? 'bg-green-100 text-green-700 hover:bg-green-200' 
-                    : 'bg-red-100 text-red-700 hover:bg-red-200'
-                } transition-colors`}
-              >
-                {getStatusIcon()}
-                <span>{dbStatus.tablesLoaded}/{dbStatus.totalTables}</span>
-              </button>
+              {/* Status Indicators */}
+              <div className="flex items-center space-x-2">
+                {/* Airtable Status */}
+                <button
+                  onClick={() => setShowDbStatus(!showDbStatus)}
+                  className={`flex items-center space-x-2 px-2 py-1 rounded-lg text-xs ${
+                    dbStatus.connected 
+                      ? 'bg-green-100 text-green-700 hover:bg-green-200' 
+                      : 'bg-red-100 text-red-700 hover:bg-red-200'
+                  } transition-colors`}
+                  title="Status Database Airtable"
+                >
+                  {getStatusIcon(dbStatus.connected, dbStatus.tablesLoaded > 0)}
+                  <Database className="w-3 h-3" />
+                  <span>{dbStatus.tablesLoaded}/{dbStatus.totalTables}</span>
+                </button>
+
+                {/* Google Drive Status */}
+                <button
+                  onClick={() => setShowDbStatus(!showDbStatus)}
+                  className={`flex items-center space-x-2 px-2 py-1 rounded-lg text-xs ${
+                    driveStatus.connected 
+                      ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' 
+                      : 'bg-red-100 text-red-700 hover:bg-red-200'
+                  } transition-colors`}
+                  title="Status Google Drive"
+                >
+                  {getStatusIcon(driveStatus.connected, driveStatus.documentsFound > 0)}
+                  <Folder className="w-3 h-3" />
+                  <span>{driveStatus.documentsFound}</span>
+                </button>
+              </div>
 
               {/* Theme Toggle */}
               <button
@@ -327,15 +444,15 @@ const ChatAI = () => {
             </div>
           </div>
 
-          {/* Database Status Expanded */}
+          {/* Expanded Status */}
           {showDbStatus && (
             <div className={`mt-4 p-4 rounded-lg ${
               darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-100 border-gray-200'
             } border`}>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold flex items-center space-x-2">
-                  <Database className="w-4 h-4" />
-                  <span>Stato Database</span>
+                  <Activity className="w-4 h-4" />
+                  <span>Stato Connessioni</span>
                 </h3>
                 <button
                   onClick={retryConnection}
@@ -346,22 +463,46 @@ const ChatAI = () => {
                 </button>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
-                {['protocolli', 'sintomi', 'documentazione', 'testimonianze', 'ricerche', 'faq', 'dosaggi'].map((table) => (
-                  <div key={table} className="flex items-center space-x-2">
-                    <div className={`w-2 h-2 rounded-full ${
-                      dbStatus.errors.some(e => e.includes(table)) ? 'bg-red-500' : 'bg-green-500'
-                    }`}></div>
-                    <span className="capitalize">{table}</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Airtable Status */}
+                <div>
+                  <h4 className="font-medium mb-2 flex items-center space-x-2">
+                    <Database className="w-4 h-4" />
+                    <span>Database Airtable</span>
+                  </h4>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {['protocolli', 'sintomi', 'documentazione', 'testimonianze', 'ricerche', 'faq', 'dosaggi'].map((table) => (
+                      <div key={table} className="flex items-center space-x-2">
+                        <div className={`w-2 h-2 rounded-full ${
+                          dbStatus.errors.some(e => e.includes(table)) ? 'bg-red-500' : 'bg-green-500'
+                        }`}></div>
+                        <span className="capitalize">{table}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </div>
+
+                {/* Google Drive Status */}
+                <div>
+                  <h4 className="font-medium mb-2 flex items-center space-x-2">
+                    <Folder className="w-4 h-4" />
+                    <span>Google Drive</span>
+                  </h4>
+                  <div className="text-xs space-y-1">
+                    <div>Documenti trovati: {driveStatus.documentsFound}</div>
+                    <div>Tipi supportati: {driveStatus.supportedTypes.join(', ')}</div>
+                    <div className={driveStatus.connected ? 'text-green-600' : 'text-red-600'}>
+                      {driveStatus.connected ? 'Connesso' : 'Disconnesso'}
+                    </div>
+                  </div>
+                </div>
               </div>
               
-              {dbStatus.errors.length > 0 && (
+              {(dbStatus.errors.length > 0 || driveStatus.errors.length > 0) && (
                 <div className="mt-3 text-xs text-red-600">
                   <strong>Errori:</strong>
                   <ul className="mt-1 space-y-1">
-                    {dbStatus.errors.slice(0, 3).map((error, index) => (
+                    {[...dbStatus.errors, ...driveStatus.errors].slice(0, 3).map((error, index) => (
                       <li key={index}>• {error}</li>
                     ))}
                   </ul>
@@ -411,7 +552,7 @@ const ChatAI = () => {
                     {message.isLoading ? (
                       <div className="flex items-center space-x-3">
                         <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
-                        <span className="text-sm">Analizzando database...</span>
+                        <span className="text-sm">Consultando database e documenti...</span>
                         <div className="flex space-x-1">
                           <div className="w-2 h-2 bg-emerald-600 rounded-full animate-pulse"></div>
                           <div className="w-2 h-2 bg-cyan-600 rounded-full animate-pulse animation-delay-100"></div>
@@ -425,56 +566,65 @@ const ChatAI = () => {
                         </div>
                         
                         {/* Dati correlati */}
-                        {message.relatedData && (
+                        {(message.relatedData || message.driveDocuments) && (
                           <div className="mt-4 pt-3 border-t border-gray-300 dark:border-gray-600">
                             <div className="text-xs font-semibold mb-2 flex items-center space-x-1">
                               <Activity className="w-3 h-3" />
-                              <span>Dati consultati:</span>
+                              <span>Fonti consultate:</span>
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                              {message.relatedData.protocolli && message.relatedData.protocolli.length > 0 && (
+                              {/* Airtable data */}
+                              {message.relatedData?.protocolli && message.relatedData.protocolli.length > 0 && (
                                 <div className="flex items-center space-x-1 bg-blue-100 text-blue-700 px-2 py-1 rounded">
                                   <FileText className="w-3 h-3" />
                                   <span>{message.relatedData.protocolli.length} protocolli</span>
                                 </div>
                               )}
-                              {message.relatedData.sintomi && message.relatedData.sintomi.length > 0 && (
+                              {message.relatedData?.sintomi && message.relatedData.sintomi.length > 0 && (
                                 <div className="flex items-center space-x-1 bg-green-100 text-green-700 px-2 py-1 rounded">
                                   <Search className="w-3 h-3" />
                                   <span>{message.relatedData.sintomi.length} sintomi</span>
                                 </div>
                               )}
-                              {message.relatedData.testimonianze && message.relatedData.testimonianze.length > 0 && (
+                              {message.relatedData?.testimonianze && message.relatedData.testimonianze.length > 0 && (
                                 <div className="flex items-center space-x-1 bg-purple-100 text-purple-700 px-2 py-1 rounded">
                                   <MessageCircle className="w-3 h-3" />
                                   <span>{message.relatedData.testimonianze.length} testimonianze</span>
                                 </div>
                               )}
-                              {message.relatedData.ricerche && message.relatedData.ricerche.length > 0 && (
+                              {message.relatedData?.ricerche && message.relatedData.ricerche.length > 0 && (
                                 <div className="flex items-center space-x-1 bg-orange-100 text-orange-700 px-2 py-1 rounded">
                                   <FlaskConical className="w-3 h-3" />
                                   <span>{message.relatedData.ricerche.length} ricerche</span>
                                 </div>
                               )}
-                              {message.relatedData.faq && message.relatedData.faq.length > 0 && (
-                                <div className="flex items-center space-x-1 bg-yellow-100 text-yellow-700 px-2 py-1 rounded">
-                                  <BookOpen className="w-3 h-3" />
-                                  <span>{message.relatedData.faq.length} FAQ</span>
-                                </div>
-                              )}
-                              {message.relatedData.dosaggi && message.relatedData.dosaggi.length > 0 && (
+                              
+                              {/* Drive documents */}
+                              {message.driveDocuments && message.driveDocuments.length > 0 && (
                                 <div className="flex items-center space-x-1 bg-indigo-100 text-indigo-700 px-2 py-1 rounded">
-                                  <Calculator className="w-3 h-3" />
-                                  <span>{message.relatedData.dosaggi.length} dosaggi</span>
-                                </div>
-                              )}
-                              {message.relatedData.documentazione && message.relatedData.documentazione.length > 0 && (
-                                <div className="flex items-center space-x-1 bg-gray-100 text-gray-700 px-2 py-1 rounded">
-                                  <Heart className="w-3 h-3" />
-                                  <span>{message.relatedData.documentazione.length} docs</span>
+                                  <File className="w-3 h-3" />
+                                  <span>{message.driveDocuments.length} documenti</span>
                                 </div>
                               )}
                             </div>
+                            
+                            {/* Links to Drive documents */}
+                            {message.driveDocuments && message.driveDocuments.length > 0 && (
+                              <div className="mt-2 space-y-1">
+                                {message.driveDocuments.slice(0, 3).map((doc, index) => (
+                                  <a
+                                    key={index}
+                                    href={doc.document.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center space-x-2 text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                                  >
+                                    <Link className="w-3 h-3" />
+                                    <span>{doc.document.name}</span>
+                                  </a>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         )}
                       </>
@@ -491,7 +641,7 @@ const ChatAI = () => {
             <div ref={messagesEndRef} />
           </div>
           
-          {/* Quick Questions - Solo se prima conversazione */}
+          {/* Quick Questions */}
           {messages.length === 1 && (
             <div className={`px-6 py-4 border-t ${darkMode ? 'border-gray-700 bg-gray-750' : 'border-gray-200 bg-gray-50'}`}>
               <div className="text-sm font-semibold mb-3 text-gray-600 flex items-center space-x-2">
@@ -504,7 +654,7 @@ const ChatAI = () => {
                     key={index}
                     onClick={() => handleQuickQuestion(question)}
                     className="text-sm px-4 py-3 rounded-lg bg-gradient-to-r from-emerald-100 to-cyan-100 hover:from-emerald-200 hover:to-cyan-200 text-emerald-700 transition-all text-left shadow-sm hover:shadow-md"
-                    disabled={isLoading || !dbStatus.connected}
+                    disabled={isLoading || (!dbStatus.connected && !driveStatus.connected)}
                   >
                     <div className="flex items-center space-x-2">
                       <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
@@ -525,21 +675,21 @@ const ChatAI = () => {
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-                  placeholder={dbStatus.connected 
-                    ? "Chiedi qualsiasi cosa: protocolli, dosaggi, controindicazioni..." 
-                    : "Connessione al database in corso..."
+                  placeholder={dbStatus.connected || driveStatus.connected
+                    ? "Chiedi qualsiasi cosa: protocolli, dosaggi, cerca documenti..." 
+                    : "Connessione alle fonti dati in corso..."
                   }
                   className={`w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all ${
                     darkMode 
                       ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
                       : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
                   }`}
-                  disabled={isLoading || !dbStatus.connected}
+                  disabled={isLoading || (!dbStatus.connected && !driveStatus.connected)}
                 />
               </div>
               <button
                 onClick={handleSendMessage}
-                disabled={!inputMessage.trim() || isLoading || !dbStatus.connected}
+                disabled={!inputMessage.trim() || isLoading || (!dbStatus.connected && !driveStatus.connected)}
                 className="bg-gradient-to-r from-emerald-500 to-cyan-500 text-white px-6 py-3 rounded-xl hover:from-emerald-600 hover:to-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-lg hover:shadow-xl flex items-center space-x-2"
               >
                 {isLoading ? (
@@ -560,10 +710,20 @@ const ChatAI = () => {
           <div className={`p-4 rounded-xl border transition-all hover:shadow-lg ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
             <div className="flex items-center space-x-2 mb-2">
               <Database className="w-5 h-5 text-emerald-600" />
-              <h3 className="font-semibold">7 Database</h3>
+              <h3 className="font-semibold">7 Database Airtable</h3>
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Accesso completo a protocolli, sintomi, testimonianze e ricerche
+            </p>
+          </div>
+          
+          <div className={`p-4 rounded-xl border transition-all hover:shadow-lg ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+            <div className="flex items-center space-x-2 mb-2">
+              <Folder className="w-5 h-5 text-blue-600" />
+              <h3 className="font-semibold">Google Drive</h3>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Ricerca intelligente nei tuoi PDF, Word, Excel personali
             </p>
           </div>
           
@@ -574,16 +734,6 @@ const ChatAI = () => {
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Intelligenza artificiale esperta in CDS e Blu di Metilene
-            </p>
-          </div>
-          
-          <div className={`p-4 rounded-xl border transition-all hover:shadow-lg ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-            <div className="flex items-center space-x-2 mb-2">
-              <Calculator className="w-5 h-5 text-purple-600" />
-              <h3 className="font-semibold">Dosaggi Precisi</h3>
-            </div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Calcoli personalizzati per peso, età e patologia specifica
             </p>
           </div>
           
