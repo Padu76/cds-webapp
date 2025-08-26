@@ -40,7 +40,7 @@ const ToolkitPage = () => {
     };
   }, [isTimerRunning]);
 
-  // Calcolatore CDS
+  // Calcolatore CDS - Fix arithmetic operations
   const calculateCDS = () => {
     const peso = parseFloat(formData.peso);
     if (!peso) return null;
@@ -54,9 +54,11 @@ const ToolkitPage = () => {
       default: doseBase = 0.03;
     }
 
-    const mlCDS = (peso * doseBase).toFixed(1);
+    const mlCDSNumber = peso * doseBase;
+    const mlCDS = mlCDSNumber.toFixed(1);
     const mlAcqua = formData.patologia === 'gravi' ? 200 : 250;
-    const doseGiornaliera = (mlCDS * parseInt(formData.frequenza)).toFixed(1);
+    const doseGiornalieraNumber = mlCDSNumber * parseInt(formData.frequenza);
+    const doseGiornaliera = doseGiornalieraNumber.toFixed(1);
 
     return {
       mlPerDose: mlCDS,
@@ -67,7 +69,7 @@ const ToolkitPage = () => {
     };
   };
 
-  // Calcolatore Blu di Metilene
+  // Calcolatore Blu di Metilene - Fix arithmetic operations
   const calculateBluMetilene = () => {
     const peso = parseFloat(formData.peso);
     if (!peso) return null;
@@ -82,7 +84,8 @@ const ToolkitPage = () => {
     }
 
     const mgPerDose = Math.round(peso * doseBase);
-    const mgGiornalieri = mgPerDose * (formData.patologia === 'neurologico' ? 1 : parseInt(formData.frequenza));
+    const frequenzaNumero = formData.patologia === 'neurologico' ? 1 : parseInt(formData.frequenza);
+    const mgGiornalieri = mgPerDose * frequenzaNumero;
 
     return {
       mgPerDose: mgPerDose,
