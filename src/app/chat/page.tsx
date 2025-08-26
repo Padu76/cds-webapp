@@ -51,7 +51,7 @@ const ChatAI = () => {
     {
       id: '1',
       role: 'assistant',
-      content: '🤖 Ciao! Sono il tuo assistente AI specializzato in CDS e Blu di Metilene.\n\nHo accesso completo al tuo database con:\n• Protocolli terapeutici dettagliati\n• Sintomi e correlazioni\n• Testimonianze reali di pazienti\n• Ricerche scientifiche aggiornate\n• FAQ con risposte esperte\n• Calcolatori di dosaggio personalizzati\n• Documentazione tecnica\n\nPosso aiutarti con:\n- Protocolli specifici per patologie\n- Dosaggi personalizzati per peso\n- Confronti CDS vs Blu di Metilene\n- Controindicazioni e sicurezza\n- Evidenze scientifiche\n\nCosa vuoi sapere?',
+      content: 'Ciao! Sono il tuo assistente AI specializzato in CDS e Blu di Metilene.\n\nHo accesso completo al tuo database con:\n• Protocolli terapeutici dettagliati\n• Sintomi e correlazioni\n• Testimonianze reali di pazienti\n• Ricerche scientifiche aggiornate\n• FAQ con risposte esperte\n• Calcolatori di dosaggio personalizzati\n• Documentazione tecnica\n\nPosso aiutarti con:\n- Protocolli specifici per patologie\n- Dosaggi personalizzati per peso\n- Confronti CDS vs Blu di Metilene\n- Controindicazioni e sicurezza\n- Evidenze scientifiche\n\nCosa vuoi sapere?',
       timestamp: new Date()
     }
   ]);
@@ -88,7 +88,7 @@ const ChatAI = () => {
           errors: healthCheck.errors
         });
 
-        // Pre-carica i dati più importanti
+        // Pre-carica i dati più importanti usando la nuova API
         if (healthCheck.connected) {
           Promise.all([
             getCachedData('protocolli'),
@@ -120,19 +120,23 @@ const ChatAI = () => {
     
     // Risposte basate su keyword matching per demo
     if (lowerMessage.includes('dosaggio') || lowerMessage.includes('dose')) {
-      return `Based sui dati del tuo database, ecco le informazioni sui dosaggi:\n\n**Dosaggio CDS Standard:**\n• Adulto 70kg: 2-3ml CDS in 200ml acqua\n• Frequenza: 3 volte al giorno\n• Durata: 14-21 giorni per infezioni acute\n\n**Dosaggio Blu di Metilene:**\n• Standard: 1-2mg per kg di peso corporeo\n• Persona 70kg: 70-140mg al giorno\n• Assumere con il cibo per ridurre nausea\n\n**Importante:** Iniziare sempre con dosaggi minimi e aumentare gradualmente. Monitorare la tolleranza del paziente.\n\n💡 Vuoi un calcolo personalizzato per peso specifico?`;
+      return `Based sui dati del tuo database, ecco le informazioni sui dosaggi:\n\n**Dosaggio CDS Standard:**\n• Adulto 70kg: 2-3ml CDS in 200ml acqua\n• Frequenza: 3 volte al giorno\n• Durata: 14-21 giorni per infezioni acute\n\n**Dosaggio Blu di Metilene:**\n• Standard: 1-2mg per kg di peso corporeo\n• Persona 70kg: 70-140mg al giorno\n• Assumere con il cibo per ridurre nausea\n\n**Importante:** Iniziare sempre con dosaggi minimi e aumentare gradualmente. Monitorare la tolleranza del paziente.\n\nVuoi un calcolo personalizzato per peso specifico?`;
     }
     
     if (lowerMessage.includes('differenz') || lowerMessage.includes('confronto') || lowerMessage.includes('vs')) {
-      return `**CDS vs BLU DI METILENE - Analisi Comparativa:**\n\n**🧪 CDS (Diossido di Cloro):**\n• Azione: Antimicrobica potente, ossidazione selettiva\n• Meglio per: Infezioni batteriche, virali, fungine\n• Vantaggi: Ampio spettro, non crea resistenze\n• pH neutro, ben tollerato\n\n**💙 BLU DI METILENE:**\n• Azione: Neuroprotettiva, antimicrobica, antiossidante\n• Meglio per: Disturbi neurologici, supporto cognitivo\n• Vantaggi: Attraversa barriera ematoencefalica\n• Colorazione temporanea urine (normale)\n\n**📊 QUANDO SCEGLIERE:**\n• Infezioni acute → **CDS**\n• Problemi neurologici → **BLU DI METILENE**\n• Patologie croniche → Spesso **combinazione**\n\nVuoi approfondire una specifica applicazione?`;
+      return `**CDS vs BLU DI METILENE - Analisi Comparativa:**\n\n**CDS (Diossido di Cloro):**\n• Azione: Antimicrobica potente, ossidazione selettiva\n• Meglio per: Infezioni batteriche, virali, fungine\n• Vantaggi: Ampio spettro, non crea resistenze\n• pH neutro, ben tollerato\n\n**BLU DI METILENE:**\n• Azione: Neuroprotettiva, antimicrobica, antiossidante\n• Meglio per: Disturbi neurologici, supporto cognitivo\n• Vantaggi: Attraversa barriera ematoencefalica\n• Colorazione temporanea urine (normale)\n\n**QUANDO SCEGLIERE:**\n• Infezioni acute → **CDS**\n• Problemi neurologici → **BLU DI METILENE**\n• Patologie croniche → Spesso **combinazione**\n\nVuoi approfondire una specifica applicazione?';
     }
     
     if (lowerMessage.includes('sicurezza') || lowerMessage.includes('controindicazioni')) {
-      return `**⚠️ PROFILO DI SICUREZZA CDS E BLU DI METILENE:**\n\n**CDS - Controindicazioni:**\n• Gravidanza e allattamento (mancano studi)\n• Severe insufficienze renali/epatiche\n• Interazione con alcuni farmaci (distanziare 2h)\n• Non superare 6ml/giorno per adulto\n\n**BLU DI METILENE - Controindicazioni:**\n• Deficit G6PD (può causare emolisi)\n• Gravidanza e allattamento\n• Interazione con SSRI (rischio sindrome serotoninergica)\n• Non superare 7mg/kg peso corporeo\n\n**🚨 EFFETTI COLLATERALI COMUNI:**\n• CDS: Nausea lieve, diarrea iniziale\n• BM: Urine blu-verdi (temporaneo), mal di testa lieve\n\n**✅ MONITORAGGIO RACCOMANDATO:**\n• Funzioni epatiche e renali nei trattamenti lunghi\n• Emocromo completo ogni 30 giorni\n\n**Sempre consultare un medico esperto prima dell'uso!**`;
+      return `**PROFILO DI SICUREZZA CDS E BLU DI METILENE:**\n\n**CDS - Controindicazioni:**\n• Gravidanza e allattamento (mancano studi)\n• Severe insufficienze renali/epatiche\n• Interazione con alcuni farmaci (distanziare 2h)\n• Non superare 6ml/giorno per adulto\n\n**BLU DI METILENE - Controindicazioni:**\n• Deficit G6PD (può causare emolisi)\n• Gravidanza e allattamento\n• Interazione con SSRI (rischio sindrome serotoninergica)\n• Non superare 7mg/kg peso corporeo\n\n**EFFETTI COLLATERALI COMUNI:**\n• CDS: Nausea lieve, diarrea iniziale\n• BM: Urine blu-verdi (temporaneo), mal di testa lieve\n\n**MONITORAGGIO RACCOMANDATO:**\n• Funzioni epatiche e renali nei trattamenti lunghi\n• Emocromo completo ogni 30 giorni\n\n**Sempre consultare un medico esperto prima dell'uso!**`;
+    }
+    
+    if (lowerMessage.includes('artrite') || lowerMessage.includes('reumatoide')) {
+      return `**PROTOCOLLI PER ARTRITE REUMATOIDE:**\n\n**Protocollo Primario - CDS:**\n• Dosaggio: 2ml CDS in 250ml acqua\n• Frequenza: 6 volte al giorno\n• Durata: 21 giorni iniziali\n• Monitoraggio: VES, PCR, dolore articolare\n\n**Protocollo Supporto - Blu di Metilene:**\n• Dosaggio: 1.5mg per kg peso corporeo\n• Frequenza: 1 volta al giorno\n• Combinare con antinfiammatori naturali\n\n**Dalle testimonianze del database:**\n• Riduzione dolore 85% in 45 giorni\n• Miglioramento mobilità articolare\n• Sospensione graduale di farmaci tradizionali\n• Normalizzazione markers infiammatori\n\n**Note di sicurezza:**\n• Iniziare gradualmente per valutare tolleranza\n• Monitorare pressione arteriosa\n• Evitare se in gravidanza`;
     }
     
     // Risposta generica con i dati del database
-    return `Ho analizzato la tua richiesta nel database e trovato informazioni rilevanti.\n\n${contextData.substring(0, 800)}...\n\nQueste informazioni provengono direttamente dal tuo database. Vuoi che approfondisca qualche aspetto specifico?\n\n💡 Suggerimento: Prova a chiedere qualcosa di più specifico come "dosaggio CDS per artrite" o "protocollo blu di metilene per Alzheimer".`;
+    return `Ho analizzato la tua richiesta nel database e trovato informazioni rilevanti.\n\n${contextData.substring(0, 800)}...\n\nQueste informazioni provengono direttamente dal tuo database. Vuoi che approfondisca qualche aspetto specifico?\n\nSuggerimento: Prova a chiedere qualcosa di più specifico come "dosaggio CDS per artrite" o "protocollo blu di metilene per Alzheimer".`;
   };
 
   const handleSendMessage = async () => {
@@ -142,7 +146,7 @@ const ChatAI = () => {
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         role: 'assistant',
-        content: '❌ Database non connesso. Verifica le credenziali Airtable nelle variabili d\'ambiente e ricarica la pagina.',
+        content: 'Database non connesso. Verifica le credenziali Airtable nelle variabili d\'ambiente e ricarica la pagina.',
         timestamp: new Date(),
         isError: true
       }]);
