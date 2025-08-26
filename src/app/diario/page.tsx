@@ -1,6 +1,5 @@
 "use client"
 import React, { useState, useEffect } from 'react';
-
 import { 
   Calendar, Plus, TrendingUp, Activity, Clock, 
   ArrowLeft, Save, Edit3, Trash2, Filter,
@@ -9,14 +8,44 @@ import {
   CheckCircle, AlertCircle, MinusCircle, Download
 } from 'lucide-react';
 
+// Definizione dei tipi TypeScript
+interface DiaryEntry {
+  id: number;
+  data: string;
+  ora: string;
+  sostanza: 'cds' | 'blu_metilene';
+  dosaggio: string;
+  sintomi_prima: string;
+  sintomi_dopo: string;
+  note: string;
+  energia: number;
+  dolore: number;
+  sonno: number;
+  umore: number;
+}
+
+interface NewEntryForm {
+  data: string;
+  ora: string;
+  sostanza: 'cds' | 'blu_metilene';
+  dosaggio: string;
+  sintomi_prima: string;
+  sintomi_dopo: string;
+  note: string;
+  energia: number;
+  dolore: number;
+  sonno: number;
+  umore: number;
+}
+
 const DiarioPage = () => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [activeTab, setActiveTab] = useState('oggi');
   const [showAddModal, setShowAddModal] = useState(false);
-  const [editingEntry, setEditingEntry] = useState(null);
+  const [editingEntry, setEditingEntry] = useState<DiaryEntry | null>(null);
   
-  // Form per nuovo entry
-  const [newEntry, setNewEntry] = useState({
+  // Form per nuovo entry con typing
+  const [newEntry, setNewEntry] = useState<NewEntryForm>({
     data: new Date().toISOString().split('T')[0],
     ora: new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
     sostanza: 'cds',
@@ -30,8 +59,8 @@ const DiarioPage = () => {
     umore: 6
   });
 
-  // Dati mock del diario
-  const [entries, setEntries] = useState([
+  // Dati mock del diario con typing
+  const [entries, setEntries] = useState<DiaryEntry[]>([
     {
       id: 1,
       data: '2025-08-26',
@@ -126,25 +155,37 @@ const DiarioPage = () => {
     setShowAddModal(false);
   };
 
-  const handleEditEntry = (entry) => {
-    setNewEntry(entry);
+  const handleEditEntry = (entry: DiaryEntry) => {
+    setNewEntry({
+      data: entry.data,
+      ora: entry.ora,
+      sostanza: entry.sostanza,
+      dosaggio: entry.dosaggio,
+      sintomi_prima: entry.sintomi_prima,
+      sintomi_dopo: entry.sintomi_dopo,
+      note: entry.note,
+      energia: entry.energia,
+      dolore: entry.dolore,
+      sonno: entry.sonno,
+      umore: entry.umore
+    });
     setEditingEntry(entry);
     setShowAddModal(true);
   };
 
-  const handleDeleteEntry = (id) => {
+  const handleDeleteEntry = (id: number) => {
     setEntries(entries.filter(entry => entry.id !== id));
   };
 
-  const getSostanzaIcon = (sostanza) => {
+  const getSostanzaIcon = (sostanza: 'cds' | 'blu_metilene') => {
     return sostanza === 'cds' ? Droplet : Pill;
   };
 
-  const getSostanzaColor = (sostanza) => {
+  const getSostanzaColor = (sostanza: 'cds' | 'blu_metilene') => {
     return sostanza === 'cds' ? 'text-blue-600' : 'text-indigo-600';
   };
 
-  const getScoreColor = (score, type) => {
+  const getScoreColor = (score: number, type: string) => {
     if (type === 'dolore') {
       if (score <= 3) return 'text-green-600';
       if (score <= 6) return 'text-yellow-600';
@@ -196,7 +237,7 @@ const DiarioPage = () => {
             { label: 'Dolore Medio', value: weekStats.dolore, icon: MinusCircle, color: 'red', unit: '/10' },
             { label: 'Sonno Medio', value: weekStats.sonno, icon: ThermometerSun, color: 'purple', unit: '/10' },
             { label: 'Umore Medio', value: weekStats.umore, icon: Heart, color: 'pink', unit: '/10' },
-            { label: 'Dosi Settimana', value: weekStats.totalDosi, icon: Activity, color: 'green', unit: '' }
+            { label: 'Dosi Settimana', value: weekStats.totalDosi.toString(), icon: Activity, color: 'green', unit: '' }
           ].map((stat, index) => (
             <div key={index} className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-4">
               <div className="flex items-center justify-between">
@@ -414,7 +455,7 @@ const DiarioPage = () => {
                   entries.reduce((acc, entry) => {
                     acc[entry.sostanza] = (acc[entry.sostanza] || 0) + 1;
                     return acc;
-                  }, {})
+                  }, {} as Record<string, number>)
                 ).map(([sostanza, count], index) => (
                   <div key={index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
                     <div className="flex items-center space-x-3">
@@ -495,7 +536,7 @@ const DiarioPage = () => {
                     </label>
                     <select
                       value={newEntry.sostanza}
-                      onChange={(e) => setNewEntry({...newEntry, sostanza: e.target.value})}
+                      onChange={(e) => setNewEntry({...newEntry, sostanza: e.target.value as 'cds' | 'blu_metilene'})}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500"
                     >
                       <option value="cds">CDS</option>
@@ -547,10 +588,10 @@ const DiarioPage = () => {
                 {/* Scores */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {[
-                    { key: 'energia', label: 'Energia', icon: TrendingUp },
-                    { key: 'dolore', label: 'Dolore', icon: MinusCircle },
-                    { key: 'sonno', label: 'Sonno', icon: ThermometerSun },
-                    { key: 'umore', label: 'Umore', icon: Heart }
+                    { key: 'energia' as keyof NewEntryForm, label: 'Energia', icon: TrendingUp },
+                    { key: 'dolore' as keyof NewEntryForm, label: 'Dolore', icon: MinusCircle },
+                    { key: 'sonno' as keyof NewEntryForm, label: 'Sonno', icon: ThermometerSun },
+                    { key: 'umore' as keyof NewEntryForm, label: 'Umore', icon: Heart }
                   ].map((score, index) => (
                     <div key={index}>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center space-x-1">
