@@ -5,7 +5,7 @@ import {
   ArrowLeft, AlertTriangle, Clock, Thermometer, Beaker, 
   Droplets, Shield, CheckCircle, Eye, Hand, Wind,
   Timer, Scale, FlaskConical, FileText, Download,
-  ChevronRight, ChevronDown, Play, Pause
+  ChevronRight, ChevronDown, Play, Pause, MessageCircle
 } from 'lucide-react';
 
 const PreparazioneCDS = () => {
