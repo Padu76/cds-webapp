@@ -4,7 +4,8 @@ import {
   Search, Filter, FileText, File, FileSpreadsheet, 
   Download, ExternalLink, Calendar, ArrowLeft, 
   RefreshCw, AlertCircle, CheckCircle2, Grid3X3,
-  List, SortAsc, SortDesc, Folder, Eye, Clock, Loader2
+  List, SortAsc, SortDesc, Folder, Eye, Clock, Loader2,
+  AlertTriangle
 } from 'lucide-react';
 
 // Timeout configurabili
