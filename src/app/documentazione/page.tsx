@@ -1,16 +1,15 @@
-"use client"
+"use client";
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Search, Filter, FileText, File, FileSpreadsheet, 
   Download, ExternalLink, Calendar, ArrowLeft, 
   RefreshCw, AlertCircle, CheckCircle2, Grid3X3,
-  List, SortAsc, SortDesc, Folder, Eye, Clock, Loader2,
-  AlertTriangle
+  List, SortAsc, SortDesc, Folder, Eye, Clock, Loader2
 } from 'lucide-react';
 
 // Timeout configurabili
 const TIMEOUTS = {
-  GOOGLE_DRIVE: 30000, // 30 secondi per Google Drive (caricamento iniziale)
+  GOOGLE_DRIVE: 30000, // 30 secondi per Google Drive
 };
 
 interface DocumentData {
@@ -30,6 +29,18 @@ interface DriveStatus {
   supportedTypes: string[];
   errors: string[];
   lastCheck?: Date;
+}
+
+interface SearchResult {
+  document: {
+    id: string;
+    name: string;
+    keywords: string[];
+    lastProcessed: string;
+    previewText: string;
+  };
+  relevantSections: string[];
+  matchScore: number;
 }
 
 // Funzione con timeout per fetch
@@ -87,15 +98,14 @@ async function checkGoogleDriveConnection(): Promise<DriveStatus> {
 // Carica solo lista documenti (senza processing contenuto)
 async function loadDocumentsList(): Promise<DocumentData[]> {
   try {
-    // Chiamata specifica per ottenere solo lista documenti
     const response = await fetchWithTimeout('/api/drive', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         query: "", 
-        metadataOnly: true // Flag per dire all'API di non processare contenuto
+        metadataOnly: true
       })
-    }, 10000); // 10 secondi dovrebbero bastare per sola lista
+    }, 10000);
 
     if (!response.ok) {
       throw new Error(`Errore caricamento lista: ${response.status}`);
@@ -103,7 +113,6 @@ async function loadDocumentsList(): Promise<DocumentData[]> {
 
     const results = await response.json();
     
-    // Estrae solo metadati senza contenuto
     return results.map((result: any) => ({
       id: result.document?.id || '',
       name: result.document?.name || 'Unknown',
@@ -111,7 +120,6 @@ async function loadDocumentsList(): Promise<DocumentData[]> {
       size: result.document?.size || 0,
       modifiedTime: result.document?.modifiedTime || new Date().toISOString(),
       url: result.document?.url || '#',
-      // Nessun contenuto caricato inizialmente
       keywords: []
     }));
   } catch (error) {
@@ -125,7 +133,7 @@ const DocumentazionePage = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [contentSearchQuery, setContentSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchMode, setSearchMode] = useState<'metadata' | 'content'>('metadata');
   const [selectedType, setSelectedType] = useState<string>('all');
@@ -144,16 +152,58 @@ const DocumentazionePage = () => {
     loadDocuments();
   }, []);
 
+  // Debounce per ricerca contenuto
+  useEffect(() => {
+    if (searchMode === 'content' && contentSearchQuery.length >= 3) {
+      const timer = setTimeout(() => {
+        searchInContent(contentSearchQuery);
+      }, 500);
+      return () => clearTimeout(timer);
+    } else if (searchMode === 'content' && contentSearchQuery.length < 3) {
+      setSearchResults([]);
+    }
+  }, [contentSearchQuery, searchMode]);
+
+  // Carica documenti
+  const loadDocuments = async () => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      // Prima verifica lo stato di Google Drive
+      const status = await checkGoogleDriveConnection();
+      setDriveStatus(status);
+
+      if (status.connected) {
+        // Carica solo lista documenti (titoli reali, nessun contenuto)
+        const docs = await loadDocumentsList();
+        setDocuments(docs);
+        
+        // Avvia processing batch in background dopo caricamento lista
+        setTimeout(() => {
+          startBatchProcessing(docs);
+        }, 2000);
+      } else {
+        setError('Connessione a Google Drive non disponibile. Errori: ' + status.errors.join(', '));
+      }
+    } catch (error) {
+      console.error('Errore nel caricamento documenti:', error);
+      setError(error instanceof Error ? error.message : 'Errore sconosciuto nel caricamento');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Avvia processing batch documenti
-  const startBatchProcessing = async () => {
-    if (documents.length === 0) return;
+  const startBatchProcessing = async (docs: DocumentData[]) => {
+    if (docs.length === 0) return;
     
     try {
       const response = await fetch('/api/pdf-content', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          documents: documents.map(doc => ({ id: doc.id, name: doc.name }))
+          documents: docs.map(doc => ({ id: doc.id, name: doc.name }))
         })
       });
       
@@ -195,67 +245,7 @@ const DocumentazionePage = () => {
     }
   };
 
-  // Debounced search
-  const loadDocuments = async () => {
-    setLoading(true);
-    setError('');
-    
-    try {
-      // Prima verifica lo stato di Google Drive
-      const status = await checkGoogleDriveConnection();
-      setDriveStatus(status);
-
-      if (status.connected) {
-        // Carica solo lista documenti (titoli reali, nessun contenuto)
-        const docs = await loadDocumentsList();
-        setDocuments(docs);
-        
-        // Avvia processing batch in background dopo caricamento lista
-        setTimeout(() => {
-          startBatchProcessing();
-        }, 2000);
-      } else {
-        setError('Connessione a Google Drive non disponibile. Errori: ' + status.errors.join(', '));
-      }
-    } catch (error) {
-      console.error('Errore nel caricamento documenti:', error);
-      setError(error instanceof Error ? error.message : 'Errore sconosciuto nel caricamento');
-    } finally {
-      setLoading(false);
-    }
-  };
-    setLoading(true);
-    setError('');
-    
-    try {
-      // Prima verifica lo stato di Google Drive
-      const status = await checkGoogleDriveConnection();
-      setDriveStatus(status);
-
-      if (status.connected) {
-        // Carica solo lista documenti (titoli reali, nessun contenuto)
-        const docs = await loadDocumentsList();
-        setDocuments(docs);
-      } else {
-        setError('Connessione a Google Drive non disponibile. Errori: ' + status.errors.join(', '));
-      }
-    } catch (error) {
-      console.error('Errore nel caricamento documenti:', error);
-      setError(error instanceof Error ? error.message : 'Errore sconosciuto nel caricamento');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Gestione filtri basata su modalità ricerca
-  const getDisplayDocuments = () => {
-    if (searchMode === 'content') {
-      return []; // Nella modalità contenuto mostriamo solo searchResults
-    }
-    return filteredAndSortedDocuments;
-  };
-
-  const displayDocuments = getDisplayDocuments();
+  // Documenti filtrati e ordinati
   const filteredAndSortedDocuments = useMemo(() => {
     let filtered = documents;
 
@@ -302,6 +292,9 @@ const DocumentazionePage = () => {
 
     return filtered;
   }, [documents, searchQuery, selectedType, sortBy, sortOrder]);
+
+  // Documenti da mostrare
+  const displayDocuments = searchMode === 'content' ? [] : filteredAndSortedDocuments;
 
   const getFileIcon = (type: string) => {
     switch (type) {
@@ -667,7 +660,7 @@ const DocumentazionePage = () => {
                   </div>
                   
                   <a
-                    href={`#`} // URL del documento originale non disponibile nei risultati ricerca
+                    href="#"
                     className="ml-4 flex items-center space-x-2 text-emerald-600 hover:text-emerald-700 text-sm font-medium transition-colors"
                   >
                     <ExternalLink className="w-4 h-4" />
@@ -835,40 +828,8 @@ const DocumentazionePage = () => {
                     </div>
                   </>
                 )}
-                  )}
-                )}
               </div>
             ))}
-          </div>
-        ) : searchMode === 'metadata' ? (
-          /* Nessun risultato ricerca metadata */
-          <div className="bg-white rounded-lg shadow-sm border p-12 text-center">
-            <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Nessun documento trovato</h3>
-            <p className="text-gray-600 mb-4">
-              {searchQuery ? 
-                `Nessun risultato per "${searchQuery}". Prova con altri termini di ricerca.` :
-                documents.length === 0 ?
-                'Impossibile caricare i documenti. Verifica la connessione a Google Drive.' :
-                'Non ci sono documenti che corrispondono ai filtri selezionati.'
-              }
-            </p>
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="text-emerald-600 hover:text-emerald-700 font-medium"
-              >
-                Cancella ricerca
-              </button>
-            )}
-            {documents.length === 0 && (
-              <button
-                onClick={loadDocuments}
-                className="ml-4 text-emerald-600 hover:text-emerald-700 font-medium"
-              >
-                Riprova caricamento
-              </button>
-            )}
           </div>
         ) : (
           /* Modalità ricerca contenuto senza query */
