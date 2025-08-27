@@ -10,7 +10,7 @@ import {
 
 // Timeout configurabili
 const TIMEOUTS = {
-  GOOGLE_DRIVE: 8000, // 8 secondi per Google Drive
+  GOOGLE_DRIVE: 30000, // 30 secondi per Google Drive (caricamento iniziale)
 };
 
 interface DocumentData {
@@ -84,13 +84,17 @@ async function checkGoogleDriveConnection(): Promise<DriveStatus> {
   }
 }
 
-// Carica tutti i documenti da Google Drive
+// Carica tutti i documenti da Google Drive con paginazione
 async function loadAllDocuments(): Promise<DocumentData[]> {
   try {
+    // Prima chiamata con limite per evitare timeout
     const response = await fetchWithTimeout('/api/drive', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: '' }) // Query vuota per tutti i documenti
+      body: JSON.stringify({ 
+        query: "",
+        maxResults: 20 // Limita a 20 documenti per volta
+      })
     }, TIMEOUTS.GOOGLE_DRIVE);
 
     if (!response.ok) {
@@ -107,7 +111,7 @@ async function loadAllDocuments(): Promise<DocumentData[]> {
       size: result.document?.size || 0,
       modifiedTime: result.document?.modifiedTime || new Date().toISOString(),
       url: result.document?.url || '#',
-      content: result.document?.content?.substring(0, 1000) || '', // Prime 1000 char
+      content: result.document?.content?.substring(0, 500) || '', // Ridotto a 500 char
       keywords: result.document?.keywords || []
     }));
   } catch (error) {
@@ -324,7 +328,7 @@ const DocumentazionePage = () => {
           {driveStatus.errors.length > 0 && (
             <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
               <div className="flex items-center space-x-2">
-                <AlertTriangle className="w-5 h-5 text-yellow-600" />
+                <AlertCircle className="w-5 h-5 text-yellow-600" />
                 <h3 className="font-semibold text-yellow-800">Avvisi Google Drive</h3>
               </div>
               <ul className="text-yellow-700 mt-1 text-sm">
