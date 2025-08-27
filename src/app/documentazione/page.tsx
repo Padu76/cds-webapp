@@ -84,38 +84,38 @@ async function checkGoogleDriveConnection(): Promise<DriveStatus> {
   }
 }
 
-// Carica solo metadati documenti (senza contenuto)
-async function loadDocumentMetadata(): Promise<DocumentData[]> {
+// Carica solo lista documenti (senza processing contenuto)
+async function loadDocumentsList(): Promise<DocumentData[]> {
   try {
-    // Usa GET che già funziona per ottenere solo lista documenti
+    // Chiamata specifica per ottenere solo lista documenti
     const response = await fetchWithTimeout('/api/drive', {
-      method: 'GET',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-    }, 5000); // Timeout ridotto per metadati
+      body: JSON.stringify({ 
+        query: "", 
+        metadataOnly: true // Flag per dire all'API di non processare contenuto
+      })
+    }, 10000); // 10 secondi dovrebbero bastare per sola lista
 
     if (!response.ok) {
-      throw new Error(`Errore caricamento metadati: ${response.status}`);
+      throw new Error(`Errore caricamento lista: ${response.status}`);
     }
 
-    const result = await response.json();
+    const results = await response.json();
     
-    // Crea documenti mock con metadati base
-    const mockDocuments: DocumentData[] = [];
-    for (let i = 1; i <= result.documentsFound; i++) {
-      mockDocuments.push({
-        id: `doc-${i}`,
-        name: `Documento ${i}.pdf`,
-        type: 'pdf',
-        size: Math.floor(Math.random() * 5000000) + 100000, // Size casuale
-        modifiedTime: new Date(Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000).toISOString(),
-        url: `https://drive.google.com/file/d/doc-${i}/view`,
-        keywords: ['cds', 'blu', 'metilene', 'protocollo'].slice(0, Math.floor(Math.random() * 4) + 1)
-      });
-    }
-    
-    return mockDocuments;
+    // Estrae solo metadati senza contenuto
+    return results.map((result: any) => ({
+      id: result.document?.id || '',
+      name: result.document?.name || 'Unknown',
+      type: result.document?.type || 'pdf',
+      size: result.document?.size || 0,
+      modifiedTime: result.document?.modifiedTime || new Date().toISOString(),
+      url: result.document?.url || '#',
+      // Nessun contenuto caricato inizialmente
+      keywords: []
+    }));
   } catch (error) {
-    console.error('Errore nel caricamento metadati:', error);
+    console.error('Errore nel caricamento lista:', error);
     return [];
   }
 }
@@ -150,8 +150,8 @@ const DocumentazionePage = () => {
       setDriveStatus(status);
 
       if (status.connected) {
-        // Carica metadati documenti (no contenuto per evitare timeout)
-        const docs = await loadDocumentMetadata();
+        // Carica solo lista documenti (titoli reali, nessun contenuto)
+        const docs = await loadDocumentsList();
         setDocuments(docs);
       } else {
         setError('Connessione a Google Drive non disponibile. Errori: ' + status.errors.join(', '));
