@@ -233,15 +233,35 @@ export async function GET() {
 // Search endpoint
 export async function POST(request: NextRequest) {
   try {
-    const { query } = await request.json();
+    const { query, metadataOnly = false } = await request.json();
     
-    // Se query è vuota o undefined, restituisci tutti i documenti
-    if (!query || query.trim() === '') {
+    // **NUOVO: Modalità solo metadati per caricamento veloce**
+    if (metadataOnly) {
       const documents = await getDocumentsFromDrive();
-      const results: DocumentSearchResult[] = [];
+      const results: DocumentSearchResult[] = documents.map(doc => ({
+        document: {
+          id: doc.id,
+          name: doc.name,
+          type: doc.type,
+          size: doc.size,
+          modifiedTime: doc.modifiedTime,
+          url: doc.url
+          // NESSUN contenuto o keywords per velocità
+        },
+        relevantSections: [],
+        matchScore: 1
+      }));
       
-      // Processa tutti i documenti senza filtro di ricerca
-      for (const doc of documents) {
+      return NextResponse.json(results);
+    }
+    
+    // Processing normale per ricerche specifiche
+    const documents = await getDocumentsFromDrive();
+    const results: DocumentSearchResult[] = [];
+    
+    // Se query è vuota, restituisci tutti i documenti con processing limitato
+    if (!query || query.trim() === '') {
+      for (const doc of documents.slice(0, 10)) { // Limita a 10 per evitare timeout
         try {
           const content = await parseDocument(doc);
           const keywords = extractKeywords(content);
@@ -250,10 +270,10 @@ export async function POST(request: NextRequest) {
             document: {
               ...doc,
               keywords,
-              content: content.substring(0, 1000) // Prime 1000 chars per preview
+              content: content.substring(0, 500) // Preview breve
             },
             relevantSections: [content.substring(0, 300) + (content.length > 300 ? '...' : '')],
-            matchScore: 1 // Score neutrale per tutti i documenti
+            matchScore: 1
           });
           
         } catch (error) {
@@ -264,14 +284,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(results);
     }
 
-    // Ricerca con query specifica (codice esistente)
-    const documents = await getDocumentsFromDrive();
-    const results: DocumentSearchResult[] = [];
-    
+    // Ricerca con query specifica (processing completo ma limitato)
     const lowerQuery = query.toLowerCase();
     const queryWords = lowerQuery.split(/\s+/).filter((w: string) => w.length > 2);
 
-    for (const doc of documents) {
+    for (const doc of documents.slice(0, 5)) { // Massimo 5 documenti per ricerche specifiche
       try {
         const content = await parseDocument(doc);
         const lowerContent = content.toLowerCase();
@@ -300,7 +317,7 @@ export async function POST(request: NextRequest) {
             document: {
               ...doc,
               keywords,
-              content: content.substring(0, 1000) // Prime 1000 chars per preview
+              content: content.substring(0, 1000)
             },
             relevantSections,
             matchScore
@@ -315,7 +332,7 @@ export async function POST(request: NextRequest) {
     // Ordina per rilevanza
     results.sort((a, b) => b.matchScore - a.matchScore);
     
-    return NextResponse.json(results.slice(0, 10));
+    return NextResponse.json(results);
     
   } catch (error) {
     console.error('Errore nella ricerca documenti:', error);
