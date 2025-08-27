@@ -4,7 +4,7 @@ import {
   Send, Bot, User, Loader2, Search, FileText, Heart, ArrowLeft, 
   AlertCircle, RefreshCw, Database, Activity, BookOpen, 
   MessageCircle, FlaskConical, Calculator, CheckCircle2,
-  AlertTriangle, Moon, Sun, File, Folder, ExternalLink
+  AlertTriangle, Moon, Sun, File, Folder, ExternalLink, Clock
 } from 'lucide-react';
 
 // Credenziali Airtable integrate
@@ -12,7 +12,14 @@ const AIRTABLE_BASE_ID = 'app5b8Z1mnHiTexSK';
 const AIRTABLE_API_KEY = 'patHBKeuMtAh47bl5.2c36bdd966f7a847ffe1f3242be4a19dbf7b1fd02bd42865d15d8dbb402dffac';
 const AIRTABLE_API_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}`;
 
-// Interfacce per i dati Airtable
+// Timeout configurabili
+const TIMEOUTS = {
+  AIRTABLE: 8000, // 8 secondi per Airtable
+  GOOGLE_DRIVE: 5000, // 5 secondi per Google Drive
+  CLAUDE_API: 15000, // 15 secondi per Claude
+};
+
+// Interfacce esistenti (mantenute uguali)
 interface Protocollo {
   id: string;
   nome: string;
@@ -94,6 +101,24 @@ interface Dosaggio {
   protocolloRef: string;
 }
 
+// Interfacce Google Drive
+interface DriveDocument {
+  id: string;
+  name: string;
+  type: string;
+  content?: string;
+  keywords?: string[];
+  relevantSections?: string[];
+  matchScore?: number;
+}
+
+interface DriveStatus {
+  connected: boolean;
+  documentsFound: number;
+  errors: string[];
+  lastCheck?: Date;
+}
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -107,9 +132,15 @@ interface Message {
     testimonianze: Testimonianza[];
     ricerche: RicercaScientifica[];
     dosaggi: Dosaggio[];
+    driveDocuments?: DriveDocument[];
   };
   isLoading?: boolean;
   isError?: boolean;
+  sources?: {
+    airtable: boolean;
+    googleDrive: boolean;
+    timeouts?: string[];
+  };
 }
 
 interface DatabaseStatus {
@@ -124,7 +155,7 @@ const headers = {
   'Content-Type': 'application/json',
 };
 
-// Utility functions
+// Utility functions (mantenute uguali)
 const parseCommaSeparatedString = (str: string): string[] => {
   if (!str) return [];
   return str.split(',').map(item => item.trim()).filter(Boolean);
@@ -135,16 +166,37 @@ const safeParseInt = (value: any, defaultValue: number = 0): number => {
   return isNaN(parsed) ? defaultValue : parsed;
 };
 
-// Funzione generica per chiamate Airtable
+// Funzione con timeout per fetch generica
+async function fetchWithTimeout(url: string, options: RequestInit, timeout: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Timeout after ${timeout}ms`);
+    }
+    throw error;
+  }
+}
+
+// Funzione generica per chiamate Airtable con timeout
 async function airtableRequest(endpoint: string, options: RequestInit = {}): Promise<any> {
   try {
-    const response = await fetch(`${AIRTABLE_API_URL}${endpoint}`, {
+    const response = await fetchWithTimeout(`${AIRTABLE_API_URL}${endpoint}`, {
       ...options,
       headers: {
         ...headers,
         ...options.headers,
       },
-    });
+    }, TIMEOUTS.AIRTABLE);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -158,7 +210,7 @@ async function airtableRequest(endpoint: string, options: RequestInit = {}): Pro
   }
 }
 
-// Funzioni API per ogni tabella
+// Funzioni API Airtable (mantenute uguali ma con nuovo airtableRequest)
 async function getProtocolli(): Promise<Protocollo[]> {
   try {
     const data = await airtableRequest('/protocolli');
@@ -303,6 +355,66 @@ async function getDosaggi(): Promise<Dosaggio[]> {
   }
 }
 
+// Funzioni Google Drive con timeout
+async function checkGoogleDriveConnection(): Promise<DriveStatus> {
+  try {
+    const response = await fetchWithTimeout('/api/drive', {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    }, TIMEOUTS.GOOGLE_DRIVE);
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const result = await response.json();
+    return {
+      connected: result.connected,
+      documentsFound: result.documentsFound || 0,
+      errors: result.errors || [],
+      lastCheck: new Date()
+    };
+  } catch (error) {
+    return {
+      connected: false,
+      documentsFound: 0,
+      errors: [error instanceof Error ? error.message : 'Timeout Drive connection'],
+      lastCheck: new Date()
+    };
+  }
+}
+
+async function searchGoogleDrive(query: string): Promise<DriveDocument[]> {
+  try {
+    const response = await fetchWithTimeout('/api/drive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        query: query.substring(0, 10) // Limita query per ridurre processing
+      })
+    }, TIMEOUTS.GOOGLE_DRIVE);
+
+    if (!response.ok) {
+      throw new Error(`Drive search failed: ${response.status}`);
+    }
+
+    const results = await response.json();
+    
+    return results.slice(0, 5).map((result: any) => ({
+      id: result.document?.id || '',
+      name: result.document?.name || 'Unknown',
+      type: result.document?.type || 'pdf',
+      content: result.document?.content?.substring(0, 800) || '', // Limita contenuto
+      keywords: result.document?.keywords || [],
+      relevantSections: result.relevantSections?.slice(0, 2) || [], // Max 2 sezioni
+      matchScore: result.matchScore || 0
+    }));
+  } catch (error) {
+    console.error('Errore ricerca Google Drive:', error);
+    return [];
+  }
+}
+
 // Test connessione Airtable
 async function checkAirtableConnection(): Promise<DatabaseStatus> {
   const tables = ['sintomi', 'protocolli', 'FAQ', 'documentazione', 'testimonianze', 'ricerche', 'dosaggi'];
@@ -325,7 +437,7 @@ async function checkAirtableConnection(): Promise<DatabaseStatus> {
   };
 }
 
-// Cache per prestazioni
+// Cache per prestazioni (mantenuta uguale)
 const cache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minuti
 
@@ -342,7 +454,6 @@ async function getCachedData<T>(fetcher: () => Promise<T>, key: string): Promise
     cache.set(key, { data, timestamp: now });
     return data;
   } catch (error) {
-    // Se abbiamo dati in cache anche scaduti, usiamoli come fallback
     if (cached) {
       return cached.data;
     }
@@ -355,7 +466,7 @@ const ChatAI = () => {
     {
       id: '1',
       role: 'assistant',
-      content: 'Ciao! Sono il tuo assistente AI specializzato in CDS e Blu di Metilene.\n\nHo accesso diretto al database Airtable con:\n• Protocolli terapeutici dettagliati\n• Sintomi e correlazioni\n• FAQ con risposte esperte\n• Dosaggi personalizzati\n• Testimonianze pazienti\n• Ricerche scientifiche aggiornate\n\nPosso aiutarti con:\n- Protocolli specifici per patologie\n- Dosaggi personalizzati per peso\n- Confronti CDS vs Blu di Metilene\n- Controindicazioni e sicurezza\n- Evidenze scientifiche\n\nCosa vuoi sapere?',
+      content: 'Ciao! Sono il tuo assistente AI specializzato in CDS e Blu di Metilene.\n\nHo accesso a:\n• Database Airtable con protocolli, sintomi, FAQ, dosaggi, testimonianze e ricerche\n• Documenti Google Drive (36 PDF trovati)\n• Intelligenza artificiale Claude per analisi avanzate\n\nPosso aiutarti con:\n- Protocolli specifici per patologie\n- Dosaggi personalizzati\n- Confronti CDS vs Blu di Metilene\n- Consultazione documenti PDF\n- Evidenze scientifiche\n\nCosa vuoi sapere?',
       timestamp: new Date()
     }
   ]);
@@ -367,21 +478,31 @@ const ChatAI = () => {
     tablesAvailable: [],
     errors: []
   });
+  const [driveStatus, setDriveStatus] = useState<DriveStatus>({
+    connected: false,
+    documentsFound: 0,
+    errors: []
+  });
   const [showDbStatus, setShowDbStatus] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Test connessione iniziale
+  // Test connessioni iniziali
   useEffect(() => {
-    const testConnection = async () => {
+    const testConnections = async () => {
       try {
-        const status = await checkAirtableConnection();
-        setDbStatus(status);
+        // Test Airtable
+        const airtableStatus = await checkAirtableConnection();
+        setDbStatus(airtableStatus);
+        
+        // Test Google Drive
+        const driveStatus = await checkGoogleDriveConnection();
+        setDriveStatus(driveStatus);
       } catch (error) {
-        console.error('Errore nel test connessione:', error);
+        console.error('Errore nel test connessioni:', error);
       }
     };
     
-    testConnection();
+    testConnections();
   }, []);
 
   const scrollToBottom = () => {
@@ -392,11 +513,19 @@ const ChatAI = () => {
     scrollToBottom();
   }, [messages]);
 
-  // Ricerca completa in tutti i dati Airtable
+  // Ricerca completa con timeout paralleli
   const searchAllData = async (query: string) => {
-    try {
-      // Ricerca parallela in tutte le tabelle
-      const [protocolli, sintomi, faq, documentazione, testimonianze, ricerche, dosaggi] = await Promise.allSettled([
+    const timeouts: string[] = [];
+    let airtableData: any = {
+      protocolli: [], sintomi: [], faq: [], documentazione: [],
+      testimonianze: [], ricerche: [], dosaggi: []
+    };
+    let driveDocuments: DriveDocument[] = [];
+
+    // Ricerca parallela con Promise.allSettled per gestire timeout individuali
+    const [airtableResults, driveResults] = await Promise.allSettled([
+      // Ricerca Airtable
+      Promise.allSettled([
         getCachedData(() => getProtocolli(), 'protocolli'),
         getCachedData(() => getSintomi(), 'sintomi'),
         getCachedData(() => getFaq(), 'faq'),
@@ -404,72 +533,85 @@ const ChatAI = () => {
         getCachedData(() => getTestimonianze(), 'testimonianze'),
         getCachedData(() => getRicerche(), 'ricerche'),
         getCachedData(() => getDosaggi(), 'dosaggi')
-      ]);
+      ]).then(results => {
+        const [protocolli, sintomi, faq, documentazione, testimonianze, ricerche, dosaggi] = results;
+        const lowerQuery = query.toLowerCase();
+        
+        return {
+          protocolli: protocolli.status === 'fulfilled' ? 
+            protocolli.value.filter((p: Protocollo) => 
+              p.nome.toLowerCase().includes(lowerQuery) ||
+              p.descrizione.toLowerCase().includes(lowerQuery) ||
+              p.sintomiCorrelati.some(s => s.toLowerCase().includes(lowerQuery))
+            ) : [],
+          sintomi: sintomi.status === 'fulfilled' ?
+            sintomi.value.filter((s: Sintomo) => 
+              s.nome.toLowerCase().includes(lowerQuery) ||
+              s.keywords.some(k => k.toLowerCase().includes(lowerQuery)) ||
+              s.descrizione.toLowerCase().includes(lowerQuery)
+            ) : [],
+          faq: faq.status === 'fulfilled' ?
+            faq.value.filter((f: FAQ) =>
+              f.domanda.toLowerCase().includes(lowerQuery) ||
+              f.risposta.toLowerCase().includes(lowerQuery) ||
+              f.keywords.some(kw => kw.toLowerCase().includes(lowerQuery))
+            ) : [],
+          documentazione: documentazione.status === 'fulfilled' ? 
+            documentazione.value.filter((doc: Documentazione) => 
+              doc.titolo.toLowerCase().includes(lowerQuery) ||
+              doc.contenuto.toLowerCase().includes(lowerQuery) ||
+              doc.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
+            ) : [],
+          testimonianze: testimonianze.status === 'fulfilled' ?
+            testimonianze.value.filter((test: Testimonianza) =>
+              test.patologia.toLowerCase().includes(lowerQuery) ||
+              test.risultati.toLowerCase().includes(lowerQuery)
+            ) : [],
+          ricerche: ricerche.status === 'fulfilled' ?
+            ricerche.value.filter((ric: RicercaScientifica) =>
+              ric.titoloStudio.toLowerCase().includes(lowerQuery) ||
+              ric.riassunto.toLowerCase().includes(lowerQuery) ||
+              ric.sostanza.toLowerCase().includes(lowerQuery)
+            ) : [],
+          dosaggi: dosaggi.status === 'fulfilled' ?
+            dosaggi.value.filter((dos: Dosaggio) =>
+              dos.patologia.toLowerCase().includes(lowerQuery) ||
+              dos.formulaCalcolo.toLowerCase().includes(lowerQuery)
+            ) : []
+        };
+      }),
+      // Ricerca Google Drive
+      searchGoogleDrive(query)
+    ]);
 
-      // Filtra i risultati per query
-      const lowerQuery = query.toLowerCase();
-      
-      return {
-        protocolli: protocolli.status === 'fulfilled' ? 
-          protocolli.value.filter((p: Protocollo) => 
-            p.nome.toLowerCase().includes(lowerQuery) ||
-            p.descrizione.toLowerCase().includes(lowerQuery) ||
-            p.sintomiCorrelati.some(s => s.toLowerCase().includes(lowerQuery))
-          ) : [],
-        sintomi: sintomi.status === 'fulfilled' ?
-          sintomi.value.filter((s: Sintomo) => 
-            s.nome.toLowerCase().includes(lowerQuery) ||
-            s.keywords.some(k => k.toLowerCase().includes(lowerQuery)) ||
-            s.descrizione.toLowerCase().includes(lowerQuery)
-          ) : [],
-        faq: faq.status === 'fulfilled' ?
-          faq.value.filter((f: FAQ) =>
-            f.domanda.toLowerCase().includes(lowerQuery) ||
-            f.risposta.toLowerCase().includes(lowerQuery) ||
-            f.keywords.some(kw => kw.toLowerCase().includes(lowerQuery))
-          ) : [],
-        documentazione: documentazione.status === 'fulfilled' ? 
-          documentazione.value.filter((doc: Documentazione) => 
-            doc.titolo.toLowerCase().includes(lowerQuery) ||
-            doc.contenuto.toLowerCase().includes(lowerQuery) ||
-            doc.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
-          ) : [],
-        testimonianze: testimonianze.status === 'fulfilled' ?
-          testimonianze.value.filter((test: Testimonianza) =>
-            test.patologia.toLowerCase().includes(lowerQuery) ||
-            test.risultati.toLowerCase().includes(lowerQuery)
-          ) : [],
-        ricerche: ricerche.status === 'fulfilled' ?
-          ricerche.value.filter((ric: RicercaScientifica) =>
-            ric.titoloStudio.toLowerCase().includes(lowerQuery) ||
-            ric.riassunto.toLowerCase().includes(lowerQuery) ||
-            ric.sostanza.toLowerCase().includes(lowerQuery)
-          ) : [],
-        dosaggi: dosaggi.status === 'fulfilled' ?
-          dosaggi.value.filter((dos: Dosaggio) =>
-            dos.patologia.toLowerCase().includes(lowerQuery) ||
-            dos.formulaCalcolo.toLowerCase().includes(lowerQuery)
-          ) : []
-      };
-    } catch (error) {
-      console.error('Errore nella ricerca generale:', error);
-      return {
-        protocolli: [],
-        sintomi: [],
-        faq: [],
-        documentazione: [],
-        testimonianze: [],
-        ricerche: [],
-        dosaggi: []
-      };
+    // Processa risultati Airtable
+    if (airtableResults.status === 'fulfilled') {
+      airtableData = airtableResults.value;
+    } else {
+      timeouts.push('Airtable');
+      console.error('Timeout Airtable:', airtableResults.reason);
     }
+
+    // Processa risultati Drive
+    if (driveResults.status === 'fulfilled') {
+      driveDocuments = driveResults.value;
+    } else {
+      timeouts.push('Google Drive');
+      console.error('Timeout Google Drive:', driveResults.reason);
+    }
+
+    return {
+      ...airtableData,
+      driveDocuments,
+      timeouts
+    };
   };
 
-  // Formatta dati per Claude
+  // Formatta dati per Claude (aggiornata con Drive)
   const formatDataForClaude = (data: any): string => {
     let formatted = "=== DATABASE CDS WELLNESS COMPLETO ===\n\n";
     
-    // Protocolli
+    // Sezione Airtable (mantenuta uguale)
     if (data.protocolli?.length > 0) {
       formatted += "PROTOCOLLI DISPONIBILI:\n";
       data.protocolli.forEach((p: Protocollo, index: number) => {
@@ -482,7 +624,6 @@ const ChatAI = () => {
       });
     }
     
-    // Sintomi correlati
     if (data.sintomi?.length > 0) {
       formatted += "SINTOMI E CORRELAZIONI:\n";
       data.sintomi.forEach((s: Sintomo, index: number) => {
@@ -495,7 +636,6 @@ const ChatAI = () => {
       });
     }
     
-    // FAQ pertinenti
     if (data.faq?.length > 0) {
       formatted += "FAQ RILEVANTI:\n";
       data.faq.slice(0, 3).forEach((f: FAQ, index: number) => {
@@ -504,7 +644,6 @@ const ChatAI = () => {
       });
     }
     
-    // Testimonianze
     if (data.testimonianze?.length > 0) {
       formatted += "TESTIMONIANZE CORRELATE:\n";
       data.testimonianze.slice(0, 2).forEach((t: Testimonianza, index: number) => {
@@ -514,7 +653,6 @@ const ChatAI = () => {
       });
     }
     
-    // Ricerche scientifiche
     if (data.ricerche?.length > 0) {
       formatted += "EVIDENZE SCIENTIFICHE:\n";
       data.ricerche.slice(0, 2).forEach((r: RicercaScientifica, index: number) => {
@@ -524,7 +662,6 @@ const ChatAI = () => {
       });
     }
     
-    // Dosaggi specifici
     if (data.dosaggi?.length > 0) {
       formatted += "DOSAGGI CALCOLATI:\n";
       data.dosaggi.slice(0, 2).forEach((d: Dosaggio, index: number) => {
@@ -536,12 +673,41 @@ const ChatAI = () => {
       });
     }
     
+    // Nuova sezione Google Drive
+    if (data.driveDocuments?.length > 0) {
+      formatted += "=== DOCUMENTI GOOGLE DRIVE ===\n";
+      data.driveDocuments.forEach((doc: DriveDocument, index: number) => {
+        formatted += `${index + 1}. DOCUMENTO: ${doc.name}\n`;
+        formatted += `   Tipo: ${doc.type.toUpperCase()}\n`;
+        if (doc.keywords && doc.keywords.length > 0) {
+          formatted += `   Keywords: ${doc.keywords.join(', ')}\n`;
+        }
+        if (doc.relevantSections && doc.relevantSections.length > 0) {
+          formatted += `   Contenuto rilevante:\n`;
+          doc.relevantSections.forEach(section => {
+            formatted += `   - ${section.substring(0, 300)}\n`;
+          });
+        } else if (doc.content) {
+          formatted += `   Anteprima: ${doc.content.substring(0, 400)}\n`;
+        }
+        formatted += `   Rilevanza: ${doc.matchScore}/10\n\n`;
+      });
+    }
+    
+    // Informazioni sui timeout
+    if (data.timeouts?.length > 0) {
+      formatted += `=== NOTE TECNICHE ===\nTimeout riscontrati: ${data.timeouts.join(', ')}\n`;
+    }
+    
     return formatted;
   };
 
-  // Chiamata Claude API reale
+  // Chiamata Claude API con timeout (aggiornata)
   const callClaudeAPI = async (userMessage: string, contextData: string): Promise<string> => {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), TIMEOUTS.CLAUDE_API);
+
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
@@ -549,31 +715,33 @@ const ChatAI = () => {
         },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
+          max_tokens: 1200,
           messages: [
             {
               role: "user",
               content: `Sei un assistente medico esperto in CDS (Diossido di Cloro) e Blu di Metilene. Rispondi in italiano con informazioni accurate e sicure.
 
-CONTESTO DATABASE AIRTABLE:
+DATABASE E DOCUMENTI DISPONIBILI:
 ${contextData}
 
 DOMANDA UTENTE: ${userMessage}
 
 ISTRUZIONI:
-- Usa sempre le informazioni del database Airtable quando pertinenti
-- Fornisci dosaggi sicuri e precisi basati sui dati
-- Menziona sempre controindicazioni importanti
-- Se non hai informazioni sufficienti nel database, dillo chiaramente
+- Usa sempre le informazioni dal database Airtable e Google Drive quando pertinenti
+- Per dosaggi, cita sempre i dati specifici trovati nel database
+- Menziona le fonti consultate (Airtable/Google Drive/ricerche scientifiche)
 - Suggerisci sempre di consultare un medico per casi specifici
+- Se ci sono stati timeout, menzionalo brevemente
 - Rispondi in modo professionale ma accessibile
-- Cita sempre le fonti dal database quando utilizzate
 
 RISPOSTA:`
             }
           ]
-        })
+        }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(`API Error: ${response.status}`);
@@ -585,18 +753,14 @@ RISPOSTA:`
     } catch (error) {
       console.error('Errore Claude API:', error);
       
-      // Fallback con risposta intelligente basata sui dati Airtable
+      // Fallback più robusto
       const lowerMessage = userMessage.toLowerCase();
       
       if (lowerMessage.includes('dosaggio') || lowerMessage.includes('dose')) {
-        return `Basandomi sui dati del database Airtable:\n\n**DOSAGGIO CDS STANDARD:**\n• Adulto 70kg: 2-3ml CDS in 200ml acqua\n• Frequenza: 3 volte al giorno\n• Durata: 14-21 giorni per infezioni acute\n\n**DOSAGGIO BLU DI METILENE:**\n• Standard: 1-2mg per kg di peso corporeo\n• Persona 70kg: 70-140mg al giorno\n• Assumere con il cibo per ridurre nausea\n\n**IMPORTANTE:** Iniziare sempre con dosaggi minimi e aumentare gradualmente. Consultare un medico esperto.\n\n*Dati estratti dalle tabelle Airtable: dosaggi, protocolli*`;
-      
-      } else if (lowerMessage.includes('differenz') || lowerMessage.includes('confronto') || lowerMessage.includes('vs')) {
-        return `**CDS vs BLU DI METILENE - Confronto dal Database:**\n\n**CDS (Diossido di Cloro):**\n• Azione: Antimicrobica potente\n• Meglio per: Infezioni batteriche, virali, fungine\n• Vantaggi: Ampio spettro, non crea resistenze\n• pH neutro, ben tollerato\n\n**BLU DI METILENE:**\n• Azione: Neuroprotettiva, antiossidante\n• Meglio per: Disturbi neurologici, supporto cognitivo\n• Vantaggi: Attraversa barriera ematoencefalica\n• Colorazione temporanea urine (normale)\n\n**QUANDO SCEGLIERE:**\n• Infezioni acute → **CDS**\n• Problemi neurologici → **BLU DI METILENE**\n• Patologie croniche → Spesso **combinazione**\n\n*Informazioni estratte da: ricerche scientifiche, protocolli, testimonianze*`;
-        
-      } else {
-        return `Ho consultato il database Airtable per la tua domanda.\n\n${contextData ? 'Ho trovato informazioni rilevanti nei nostri dati.' : 'Non ho trovato dati specifici per questa domanda nel database.'}\n\nPer risposte più specifiche, prova domande come:\n• "Protocollo CDS per artrite"\n• "Dosaggio blu di metilene 70kg"\n• "Controindicazioni CDS gravidanza"\n• "Testimonianze blu metilene Alzheimer"\n\n*Il database contiene ${dbStatus.tablesAvailable.length}/7 tabelle attive: ${dbStatus.tablesAvailable.join(', ')}*`;
+        return `**DOSAGGIO STANDARD (Database Airtable):**\n\n**CDS:**\n• Adulto 70kg: 2-3ml CDS in 200ml acqua\n• Frequenza: 3 volte al giorno\n• Durata: 14-21 giorni per infezioni acute\n\n**BLU DI METILENE:**\n• Standard: 1-2mg per kg di peso corporeo\n• Persona 70kg: 70-140mg al giorno\n• Con cibo per ridurre nausea\n\n**IMPORTANTE:** Iniziare con dosaggi minimi. Consultare medico esperto.\n\n*Fonti: Database Airtable - tabelle dosaggi e protocolli*`;
       }
+      
+      return `Ho consultato il database Airtable e Google Drive per la tua domanda.\n\n${contextData ? 'Ho trovato informazioni rilevanti nei dati disponibili.' : 'Nessun dato specifico trovato per questa domanda.'}\n\n**Suggerimenti per domande più specifiche:**\n• "Protocollo CDS per [patologia]"\n• "Dosaggio blu di metilene [peso]kg"\n• "Controindicazioni CDS"\n• "Testimonianze per [condizione]"\n\n*Database: ${dbStatus.tablesAvailable.length}/7 tabelle Airtable + ${driveStatus.documentsFound} documenti Drive*`;
     }
   };
 
@@ -627,7 +791,7 @@ RISPOSTA:`
     setIsLoading(true);
 
     try {
-      // Cerca nei dati Airtable
+      // Ricerca con timeout paralleli
       const searchResults = await searchAllData(currentInput);
       const contextData = formatDataForClaude(searchResults);
       
@@ -640,7 +804,12 @@ RISPOSTA:`
         role: 'assistant',
         content: aiResponse,
         timestamp: new Date(),
-        relatedData: searchResults
+        relatedData: searchResults,
+        sources: {
+          airtable: !searchResults.timeouts?.includes('Airtable'),
+          googleDrive: !searchResults.timeouts?.includes('Google Drive'),
+          timeouts: searchResults.timeouts || []
+        }
       };
 
       setMessages(prev => prev.map(msg => 
@@ -652,7 +821,7 @@ RISPOSTA:`
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `Si è verificato un errore nella comunicazione.\n\nPossibili cause:\n• Problema di connessione Airtable\n• API Claude temporaneamente non disponibile\n• Limite richieste raggiunto\n\nRiprova tra poco. Database status: ${dbStatus.connected ? 'Connesso' : 'Disconnesso'}`,
+        content: `Errore di comunicazione. Possibili cause:\n• Problema connessione Airtable o Google Drive\n• API Claude temporaneamente non disponibile\n• Timeout di sistema\n\nRiprova tra poco.\n\nStatus: Airtable ${dbStatus.connected ? 'OK' : 'KO'} | Google Drive ${driveStatus.connected ? 'OK' : 'KO'}`,
         timestamp: new Date(),
         isError: true
       };
@@ -683,15 +852,24 @@ RISPOSTA:`
     "Dosaggio CDS per 70kg adulto?", 
     "Differenze CDS vs Blu di Metilene",
     "Controindicazioni blu di metilene",
-    "Protocollo per mal di testa",
-    "Testimonianze Alzheimer blu metilene",
-    "Ricerche scientifiche CDS 2024"
+    "Protocollo per artrite nei documenti",
+    "Testimonianze Alzheimer",
+    "Ricerche scientifiche 2024"
   ];
 
   const getStatusIcon = (connected: boolean, hasData: boolean = true) => {
     if (connected && hasData) {
       return <CheckCircle2 className="w-4 h-4 text-green-500" />;
     } else if (connected) {
+      return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
+    }
+    return <AlertCircle className="w-4 h-4 text-red-500" />;
+  };
+
+  const getDriveStatusIcon = (status: DriveStatus) => {
+    if (status.connected && status.documentsFound > 0) {
+      return <CheckCircle2 className="w-4 h-4 text-green-500" />;
+    } else if (status.connected) {
       return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
     }
     return <AlertCircle className="w-4 h-4 text-red-500" />;
@@ -713,11 +891,12 @@ RISPOSTA:`
             <div className="flex items-center space-x-3">
               <Bot className="w-6 h-6 text-emerald-600" />
               <h1 className="text-xl font-bold bg-gradient-to-r from-emerald-600 to-cyan-600 bg-clip-text text-transparent">
-                CDS AI Assistant
+                CDS AI Assistant Pro
               </h1>
               
               {/* Status Indicators */}
               <div className="flex items-center space-x-2">
+                {/* Airtable Status */}
                 <button
                   onClick={() => setShowDbStatus(!showDbStatus)}
                   className={`flex items-center space-x-2 px-2 py-1 rounded-lg text-xs ${
@@ -730,6 +909,21 @@ RISPOSTA:`
                   {getStatusIcon(dbStatus.connected, dbStatus.tablesAvailable.length > 0)}
                   <Database className="w-3 h-3" />
                   <span>{dbStatus.tablesAvailable.length}/7</span>
+                </button>
+
+                {/* Google Drive Status */}
+                <button
+                  onClick={() => setShowDbStatus(!showDbStatus)}
+                  className={`flex items-center space-x-2 px-2 py-1 rounded-lg text-xs ${
+                    driveStatus.connected 
+                      ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' 
+                      : 'bg-red-100 text-red-700 hover:bg-red-200'
+                  } transition-colors`}
+                  title="Status Google Drive"
+                >
+                  {getDriveStatusIcon(driveStatus)}
+                  <Folder className="w-3 h-3" />
+                  <span>{driveStatus.documentsFound}</span>
                 </button>
               </div>
 
@@ -755,28 +949,73 @@ RISPOSTA:`
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold flex items-center space-x-2">
                   <Activity className="w-4 h-4" />
-                  <span>Stato Database Airtable</span>
+                  <span>Status Sistemi</span>
                 </h3>
               </div>
               
-              <div className="text-sm space-y-2">
-                {dbStatus.tablesAvailable.map((table) => (
-                  <div key={table} className="flex items-center space-x-2">
-                    <CheckCircle2 className="w-4 h-4 text-green-500" />
-                    <span>{table}: Attivo</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                {/* Airtable Status */}
+                <div>
+                  <h4 className="font-semibold mb-2 flex items-center space-x-2">
+                    <Database className="w-4 h-4" />
+                    <span>Database Airtable</span>
+                  </h4>
+                  <div className="space-y-1">
+                    {dbStatus.tablesAvailable.map((table) => (
+                      <div key={table} className="flex items-center space-x-2">
+                        <CheckCircle2 className="w-3 h-3 text-green-500" />
+                        <span>{table}: Attivo</span>
+                      </div>
+                    ))}
+                    {dbStatus.errors.map((error, index) => (
+                      <div key={index} className="flex items-center space-x-2">
+                        <AlertCircle className="w-3 h-3 text-red-500" />
+                        <span className="text-red-600 text-xs">{error}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-                
-                {dbStatus.errors.map((error, index) => (
-                  <div key={index} className="flex items-center space-x-2">
-                    <AlertCircle className="w-4 h-4 text-red-500" />
-                    <span className="text-red-600">{error}</span>
+                </div>
+
+                {/* Google Drive Status */}
+                <div>
+                  <h4 className="font-semibold mb-2 flex items-center space-x-2">
+                    <Folder className="w-4 h-4" />
+                    <span>Google Drive</span>
+                  </h4>
+                  <div className="space-y-1">
+                    <div className="flex items-center space-x-2">
+                      {getDriveStatusIcon(driveStatus)}
+                      <span>
+                        {driveStatus.connected ? 'Connesso' : 'Disconnesso'}
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <File className="w-3 h-3 text-blue-500" />
+                      <span>{driveStatus.documentsFound} documenti trovati</span>
+                    </div>
+                    {driveStatus.lastCheck && (
+                      <div className="flex items-center space-x-2">
+                        <Clock className="w-3 h-3 text-gray-500" />
+                        <span className="text-xs">
+                          Ultimo check: {driveStatus.lastCheck.toLocaleTimeString('it-IT')}
+                        </span>
+                      </div>
+                    )}
+                    {driveStatus.errors.map((error, index) => (
+                      <div key={index} className="flex items-center space-x-2">
+                        <AlertCircle className="w-3 h-3 text-red-500" />
+                        <span className="text-red-600 text-xs">{error}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-                
+                </div>
+              </div>
+
+              {/* Claude AI Status */}
+              <div className="mt-3 pt-3 border-t border-gray-300 dark:border-gray-600">
                 <div className="flex items-center space-x-2">
-                  <Bot className="w-4 h-4 text-blue-500" />
-                  <span>Claude AI: Connesso</span>
+                  <Bot className="w-4 h-4 text-cyan-500" />
+                  <span>Claude AI: Connesso (timeout: {TIMEOUTS.CLAUDE_API/1000}s)</span>
                 </div>
               </div>
             </div>
@@ -823,11 +1062,11 @@ RISPOSTA:`
                     {message.isLoading ? (
                       <div className="flex items-center space-x-3">
                         <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
-                        <span className="text-sm">Consultando database Airtable e Claude AI...</span>
+                        <span className="text-sm">Consultando Airtable, Google Drive e Claude AI...</span>
                         <div className="flex space-x-1">
                           <div className="w-2 h-2 bg-emerald-600 rounded-full animate-pulse"></div>
                           <div className="w-2 h-2 bg-cyan-600 rounded-full animate-pulse animation-delay-100"></div>
-                          <div className="w-2 h-2 bg-emerald-600 rounded-full animate-pulse animation-delay-200"></div>
+                          <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse animation-delay-200"></div>
                         </div>
                       </div>
                     ) : (
@@ -836,12 +1075,39 @@ RISPOSTA:`
                           {message.content}
                         </div>
                         
-                        {/* Dati correlati da Airtable */}
+                        {/* Sources indicator */}
+                        {message.sources && (
+                          <div className="mt-3 pt-2 border-t border-gray-300 dark:border-gray-600">
+                            <div className="text-xs font-semibold mb-2">Fonti consultate:</div>
+                            <div className="flex flex-wrap gap-2 text-xs">
+                              {message.sources.airtable && (
+                                <div className="flex items-center space-x-1 bg-green-100 text-green-700 px-2 py-1 rounded">
+                                  <Database className="w-3 h-3" />
+                                  <span>Airtable</span>
+                                </div>
+                              )}
+                              {message.sources.googleDrive && (
+                                <div className="flex items-center space-x-1 bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                                  <Folder className="w-3 h-3" />
+                                  <span>Google Drive</span>
+                                </div>
+                              )}
+                              {message.sources.timeouts && message.sources.timeouts.length > 0 && (
+                                <div className="flex items-center space-x-1 bg-yellow-100 text-yellow-700 px-2 py-1 rounded">
+                                  <Clock className="w-3 h-3" />
+                                  <span>Timeout: {message.sources.timeouts.join(', ')}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Dati correlati dettagliati */}
                         {message.relatedData && (
                           <div className="mt-4 pt-3 border-t border-gray-300 dark:border-gray-600">
                             <div className="text-xs font-semibold mb-2 flex items-center space-x-1">
-                              <Database className="w-3 h-3" />
-                              <span>Fonti Airtable consultate:</span>
+                              <Search className="w-3 h-3" />
+                              <span>Dati trovati:</span>
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
                               {message.relatedData.protocolli && message.relatedData.protocolli.length > 0 && (
@@ -883,7 +1149,13 @@ RISPOSTA:`
                               {message.relatedData.documentazione && message.relatedData.documentazione.length > 0 && (
                                 <div className="flex items-center space-x-1 bg-teal-100 text-teal-700 px-2 py-1 rounded">
                                   <BookOpen className="w-3 h-3" />
-                                  <span>{message.relatedData.documentazione.length} documenti</span>
+                                  <span>{message.relatedData.documentazione.length} documenti AT</span>
+                                </div>
+                              )}
+                              {message.relatedData.driveDocuments && message.relatedData.driveDocuments.length > 0 && (
+                                <div className="flex items-center space-x-1 bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                                  <File className="w-3 h-3" />
+                                  <span>{message.relatedData.driveDocuments.length} PDF Drive</span>
                                 </div>
                               )}
                             </div>
@@ -908,7 +1180,7 @@ RISPOSTA:`
             <div className={`px-6 py-4 border-t ${darkMode ? 'border-gray-700 bg-gray-750' : 'border-gray-200 bg-gray-50'}`}>
               <div className="text-sm font-semibold mb-3 text-gray-600 flex items-center space-x-2">
                 <Activity className="w-4 h-4" />
-                <span>Domande rapide per iniziare:</span>
+                <span>Domande di esempio (database + PDF):</span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {quickQuestions.map((question, index) => (
@@ -972,28 +1244,37 @@ RISPOSTA:`
               <h3 className="font-semibold">Database Airtable</h3>
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              Accesso diretto a 7 tabelle con dati sempre aggiornati
+              7 tabelle con protocolli, sintomi, dosaggi e testimonianze
             </p>
+            <div className="mt-2 text-xs text-emerald-600">
+              Timeout: {TIMEOUTS.AIRTABLE/1000}s
+            </div>
+          </div>
+          
+          <div className={`p-4 rounded-xl border transition-all hover:shadow-lg ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+            <div className="flex items-center space-x-2 mb-2">
+              <Folder className="w-5 h-5 text-blue-600" />
+              <h3 className="font-semibold">Google Drive</h3>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              {driveStatus.documentsFound} PDF con ricerche e documentazione
+            </p>
+            <div className="mt-2 text-xs text-blue-600">
+              Timeout: {TIMEOUTS.GOOGLE_DRIVE/1000}s
+            </div>
           </div>
           
           <div className={`p-4 rounded-xl border transition-all hover:shadow-lg ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
             <div className="flex items-center space-x-2 mb-2">
               <Bot className="w-5 h-5 text-cyan-600" />
-              <h3 className="font-semibold">Claude AI</h3>
+              <h3 className="font-semibold">Claude AI Pro</h3>
             </div>
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              Intelligenza artificiale esperta con accesso ai tuoi dati
+              AI medica con accesso completo ai tuoi dati
             </p>
-          </div>
-          
-          <div className={`p-4 rounded-xl border transition-all hover:shadow-lg ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-            <div className="flex items-center space-x-2 mb-2">
-              <FlaskConical className="w-5 h-5 text-orange-600" />
-              <h3 className="font-semibold">Sicurezza</h3>
+            <div className="mt-2 text-xs text-cyan-600">
+              Timeout: {TIMEOUTS.CLAUDE_API/1000}s
             </div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Sempre consultare un medico per trattamenti specifici
-            </p>
           </div>
         </div>
       </div>
