@@ -4,10 +4,13 @@ import {
   Search, Filter, FileText, File, FileSpreadsheet, 
   Download, ExternalLink, Calendar, ArrowLeft, 
   RefreshCw, AlertCircle, CheckCircle2, Grid3X3,
-  List, SortAsc, SortDesc, Folder, Eye, Clock
+  List, SortAsc, SortDesc, Folder, Eye, Clock, Loader2
 } from 'lucide-react';
-import Link from 'next/link';
-import { checkGoogleDriveConnection, type DocumentSearchResult } from '@/lib/document-parser';
+
+// Timeout configurabili
+const TIMEOUTS = {
+  GOOGLE_DRIVE: 8000, // 8 secondi per Google Drive
+};
 
 interface DocumentData {
   id: string;
@@ -25,6 +28,91 @@ interface DriveStatus {
   documentsFound: number;
   supportedTypes: string[];
   errors: string[];
+  lastCheck?: Date;
+}
+
+// Funzione con timeout per fetch
+async function fetchWithTimeout(url: string, options: RequestInit, timeout: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Timeout after ${timeout}ms`);
+    }
+    throw error;
+  }
+}
+
+// Verifica connessione Google Drive con timeout
+async function checkGoogleDriveConnection(): Promise<DriveStatus> {
+  try {
+    const response = await fetchWithTimeout('/api/drive', {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    }, TIMEOUTS.GOOGLE_DRIVE);
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const result = await response.json();
+    return {
+      connected: result.connected,
+      documentsFound: result.documentsFound || 0,
+      supportedTypes: result.supportedTypes || [],
+      errors: result.errors || [],
+      lastCheck: new Date()
+    };
+  } catch (error) {
+    return {
+      connected: false,
+      documentsFound: 0,
+      supportedTypes: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'txt'],
+      errors: [error instanceof Error ? error.message : 'Errore connessione Drive'],
+      lastCheck: new Date()
+    };
+  }
+}
+
+// Carica tutti i documenti da Google Drive
+async function loadAllDocuments(): Promise<DocumentData[]> {
+  try {
+    const response = await fetchWithTimeout('/api/drive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: '' }) // Query vuota per tutti i documenti
+    }, TIMEOUTS.GOOGLE_DRIVE);
+
+    if (!response.ok) {
+      throw new Error(`Errore caricamento documenti: ${response.status}`);
+    }
+
+    const results = await response.json();
+    
+    // Mappa i risultati nel formato DocumentData
+    return results.map((result: any) => ({
+      id: result.document?.id || '',
+      name: result.document?.name || 'Unknown',
+      type: result.document?.type || 'pdf',
+      size: result.document?.size || 0,
+      modifiedTime: result.document?.modifiedTime || new Date().toISOString(),
+      url: result.document?.url || '#',
+      content: result.document?.content?.substring(0, 1000) || '', // Prime 1000 char
+      keywords: result.document?.keywords || []
+    }));
+  } catch (error) {
+    console.error('Errore nel caricamento documenti:', error);
+    return [];
+  }
 }
 
 const DocumentazionePage = () => {
@@ -41,6 +129,7 @@ const DocumentazionePage = () => {
     supportedTypes: [],
     errors: []
   });
+  const [error, setError] = useState<string>('');
 
   useEffect(() => {
     loadDocuments();
@@ -48,6 +137,8 @@ const DocumentazionePage = () => {
 
   const loadDocuments = async () => {
     setLoading(true);
+    setError('');
+    
     try {
       // Prima verifica lo stato di Google Drive
       const status = await checkGoogleDriveConnection();
@@ -55,20 +146,14 @@ const DocumentazionePage = () => {
 
       if (status.connected) {
         // Carica tutti i documenti disponibili
-        const response = await fetch('/api/drive', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: '' }) // Query vuota per ottenere tutti i documenti
-        });
-
-        if (response.ok) {
-          const results: DocumentSearchResult[] = await response.json();
-          const docs = results.map(result => result.document);
-          setDocuments(docs);
-        }
+        const docs = await loadAllDocuments();
+        setDocuments(docs);
+      } else {
+        setError('Connessione a Google Drive non disponibile. Errori: ' + status.errors.join(', '));
       }
     } catch (error) {
       console.error('Errore nel caricamento documenti:', error);
+      setError(error instanceof Error ? error.message : 'Errore sconosciuto nel caricamento');
     } finally {
       setLoading(false);
     }
@@ -80,7 +165,14 @@ const DocumentazionePage = () => {
 
     // Filtro per tipo
     if (selectedType !== 'all') {
-      filtered = filtered.filter(doc => doc.type === selectedType);
+      filtered = filtered.filter(doc => {
+        if (selectedType === 'docx') {
+          return doc.type === 'docx' || doc.type === 'doc';
+        } else if (selectedType === 'xlsx') {
+          return doc.type === 'xlsx' || doc.type === 'xls';
+        }
+        return doc.type === selectedType;
+      });
     }
 
     // Filtro per ricerca
@@ -158,8 +250,9 @@ const DocumentazionePage = () => {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-emerald-600" />
-          <p className="text-gray-600">Caricamento documentazione...</p>
+          <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-emerald-600" />
+          <p className="text-gray-600 text-lg">Caricamento documentazione...</p>
+          <p className="text-gray-500 text-sm mt-2">Connessione a Google Drive in corso</p>
         </div>
       </div>
     );
@@ -172,10 +265,10 @@ const DocumentazionePage = () => {
         <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <Link href="/" className="flex items-center space-x-2 text-gray-600 hover:text-emerald-600 transition-colors">
+              <a href="/" className="flex items-center space-x-2 text-gray-600 hover:text-emerald-600 transition-colors">
                 <ArrowLeft className="w-5 h-5" />
                 <span>Home</span>
-              </Link>
+              </a>
               <div className="h-6 w-px bg-gray-300"></div>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">Documentazione</h1>
@@ -199,15 +292,47 @@ const DocumentazionePage = () => {
                 <span>{driveStatus.documentsFound} documenti</span>
               </div>
               
+              {driveStatus.lastCheck && (
+                <div className="text-xs text-gray-500">
+                  Aggiornato: {driveStatus.lastCheck.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              )}
+              
               <button
                 onClick={loadDocuments}
-                className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                disabled={loading}
+                className="p-2 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
                 title="Ricarica documenti"
               >
-                <RefreshCw className="w-5 h-5" />
+                <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
               </button>
             </div>
           </div>
+          
+          {/* Errori */}
+          {error && (
+            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <AlertCircle className="w-5 h-5 text-red-600" />
+                <h3 className="font-semibold text-red-800">Errore di connessione</h3>
+              </div>
+              <p className="text-red-700 mt-1">{error}</p>
+            </div>
+          )}
+          
+          {driveStatus.errors.length > 0 && (
+            <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <AlertTriangle className="w-5 h-5 text-yellow-600" />
+                <h3 className="font-semibold text-yellow-800">Avvisi Google Drive</h3>
+              </div>
+              <ul className="text-yellow-700 mt-1 text-sm">
+                {driveStatus.errors.map((err, idx) => (
+                  <li key={idx}>• {err}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       </header>
 
@@ -341,6 +466,8 @@ const DocumentazionePage = () => {
             <p className="text-gray-600 mb-4">
               {searchQuery ? 
                 `Nessun risultato per "${searchQuery}". Prova con altri termini di ricerca.` :
+                documents.length === 0 ?
+                'Impossibile caricare i documenti. Verifica la connessione a Google Drive.' :
                 'Non ci sono documenti che corrispondono ai filtri selezionati.'
               }
             </p>
@@ -350,6 +477,14 @@ const DocumentazionePage = () => {
                 className="text-emerald-600 hover:text-emerald-700 font-medium"
               >
                 Cancella ricerca
+              </button>
+            )}
+            {documents.length === 0 && (
+              <button
+                onClick={loadDocuments}
+                className="ml-4 text-emerald-600 hover:text-emerald-700 font-medium"
+              >
+                Riprova caricamento
               </button>
             )}
           </div>
@@ -476,13 +611,13 @@ const DocumentazionePage = () => {
         <div className="mt-12 bg-gradient-to-r from-emerald-500 to-cyan-500 rounded-lg p-6 text-white text-center">
           <h3 className="text-xl font-semibold mb-2">Non trovi quello che cerchi?</h3>
           <p className="mb-4 opacity-90">Chiedi all'AI Assistant che consulterà automaticamente questi documenti</p>
-          <Link
+          <a
             href="/chat"
             className="inline-flex items-center space-x-2 bg-white text-emerald-600 px-6 py-3 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
           >
             <span>Vai alla Chat AI</span>
             <ExternalLink className="w-4 h-4" />
-          </Link>
+          </a>
         </div>
       </div>
     </div>
