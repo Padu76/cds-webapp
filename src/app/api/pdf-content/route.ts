@@ -1,4 +1,3 @@
-// src/app/api/pdf-content/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 
@@ -288,8 +287,10 @@ export async function POST(request: NextRequest) {
       matchScore: number;
     }> = [];
     
-    // Cerca nei documenti in cache
-    for (const [docId, docContent] of contentCache) {
+    // Cerca nei documenti in cache - FIX: usa Array.from per iterare Map
+    const cacheEntries = Array.from(contentCache.entries());
+    
+    for (const [docId, docContent] of cacheEntries) {
       // Se documentIds specificato, filtra solo quelli
       if (documentIds && !documentIds.includes(docId)) {
         continue;
