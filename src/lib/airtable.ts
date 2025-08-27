@@ -1,8 +1,8 @@
-// airtable.ts - Integrazione Airtable Reale
+// airtable.ts - Integrazione Airtable con nomi campi corretti
 
-// Credenziali Airtable
-const AIRTABLE_BASE_ID = 'app5b8Z1mnHiTexSK';
-const AIRTABLE_API_KEY = 'patHBKeuMtAh47bl5.2c36bdd966f7a847ffe1f3242be4a19dbf7b1fd02bd42865d15d8dbb402dffac';
+// Credenziali da variabili ambiente
+const AIRTABLE_BASE_ID = process.env.NEXT_PUBLIC_AIRTABLE_BASE_ID!;
+const AIRTABLE_API_KEY = process.env.NEXT_PUBLIC_AIRTABLE_API_KEY!;
 const AIRTABLE_API_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}`;
 
 // Interfacce per i dati
@@ -99,6 +99,12 @@ const parseCommaSeparatedString = (str: string): string[] => {
   return str.split(',').map(item => item.trim()).filter(Boolean);
 };
 
+const parseKeywordsArray = (str: string | string[]): string[] => {
+  if (Array.isArray(str)) return str;
+  if (!str) return [];
+  return str.split(',').map(item => item.trim()).filter(Boolean);
+};
+
 const safeParseInt = (value: any, defaultValue: number = 0): number => {
   const parsed = parseInt(value);
   return isNaN(parsed) ? defaultValue : parsed;
@@ -117,6 +123,7 @@ async function airtableRequest(endpoint: string, options: RequestInit = {}): Pro
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      console.error(`Errore Airtable ${response.status}:`, errorData);
       throw new Error(`Errore Airtable: ${response.status} - ${errorData.error?.message || response.statusText}`);
     }
 
@@ -127,154 +134,154 @@ async function airtableRequest(endpoint: string, options: RequestInit = {}): Pro
   }
 }
 
-// SINTOMI
+// SINTOMI - Basato sui campi visti negli screenshot
 export async function getSintomi(): Promise<Sintomo[]> {
   try {
     const data = await airtableRequest('/sintomi');
     
     return data.records.map((record: any) => ({
       id: record.id,
-      nome: record.fields.Nome || record.fields.nome || '',
-      keywords: parseCommaSeparatedString(record.fields.Keywords || record.fields.keywords || ''),
-      categoria: record.fields.Categoria || record.fields.categoria || '',
-      urgenza: record.fields.Urgenza || record.fields.urgenza || 'Bassa',
-      descrizione: record.fields.Descrizione || record.fields.descrizione || '',
-      protocolliSuggeriti: parseCommaSeparatedString(record.fields.Protocolli_Suggeriti || record.fields.protocolli_suggeriti || ''),
+      nome: record.fields.Nome || '',
+      keywords: parseKeywordsArray(record.fields.Keywords || ''),
+      categoria: record.fields.Categoria || '',
+      urgenza: record.fields.Urgenza || 'Bassa',
+      descrizione: record.fields.Descrizione || '',
+      protocolliSuggeriti: parseCommaSeparatedString(record.fields.Protocolli_Suggeriti || ''),
     }));
   } catch (error) {
     console.error('Errore nel recupero sintomi:', error);
-    throw error;
+    return [];
   }
 }
 
-// PROTOCOLLI
+// PROTOCOLLI - Basato sui campi visti negli screenshot
 export async function getProtocolli(): Promise<Protocollo[]> {
   try {
     const data = await airtableRequest('/protocolli');
     
     return data.records.map((record: any) => ({
       id: record.id,
-      nome: record.fields.Nome || record.fields.nome || '',
-      descrizione: record.fields.Descrizione || record.fields.descrizione || '',
-      dosaggio: record.fields.Dosaggio || record.fields.dosaggio || '',
-      sintomiCorrelati: parseCommaSeparatedString(record.fields.Sintomi_Correlati || record.fields.sintomi_correlati || ''),
-      pdfUrl: record.fields.PDF_URL || record.fields.pdf_url || '',
-      efficacia: safeParseInt(record.fields.Efficacia || record.fields.efficacia),
-      note: record.fields.Note || record.fields.note || '',
-      categoria: record.fields.Categoria || record.fields.categoria || '',
+      nome: record.fields.Nome || '',
+      descrizione: record.fields.Descrizione || '',
+      dosaggio: record.fields.Dosaggio || '',
+      sintomiCorrelati: parseCommaSeparatedString(record.fields.Sintomi_Correlati || ''),
+      pdfUrl: record.fields.PDF_URL || '',
+      efficacia: safeParseInt(record.fields.Efficacia),
+      note: record.fields.Note || '',
+      categoria: record.fields.Categoria || '',
     }));
   } catch (error) {
     console.error('Errore nel recupero protocolli:', error);
-    throw error;
+    return [];
   }
 }
 
-// FAQ
+// FAQ - Basato sui campi visti negli screenshot
 export async function getFaq(): Promise<FAQ[]> {
   try {
     const data = await airtableRequest('/FAQ');
     
     return data.records.map((record: any) => ({
       id: record.id,
-      domanda: record.fields.Domanda || record.fields.domanda || '',
-      risposta: record.fields.Risposta || record.fields.risposta || '',
-      categoria: record.fields.Categoria || record.fields.categoria || '',
-      keywords: parseCommaSeparatedString(record.fields.Keywords || record.fields.keywords || ''),
-      importanza: safeParseInt(record.fields.Importanza || record.fields.importanza),
-      dataAggiornamento: record.fields.Data_Aggiornamento || record.fields.data_aggiornamento || '',
-      protocolloCorrelato: record.fields.Protocollo_Correlato || record.fields.protocollo_correlato || '',
+      domanda: record.fields.Domanda || '',
+      risposta: record.fields.Risposta || '',
+      categoria: record.fields.Categoria || '',
+      keywords: parseKeywordsArray(record.fields.Keywords || ''),
+      importanza: safeParseInt(record.fields.Importanza),
+      dataAggiornamento: record.fields.Data_Aggiornamento || '',
+      protocolloCorrelato: record.fields.Protocollo_Correlato || '',
     }));
   } catch (error) {
     console.error('Errore nel recupero FAQ:', error);
-    throw error;
+    return [];
   }
 }
 
-// DOCUMENTAZIONE
+// DOCUMENTAZIONE - Basato sui campi visti negli screenshot
 export async function getDocumentazione(): Promise<Documentazione[]> {
   try {
     const data = await airtableRequest('/documentazione');
     
     return data.records.map((record: any) => ({
       id: record.id,
-      titolo: record.fields.Titolo || record.fields.titolo || '',
-      categoria: record.fields.Categoria || record.fields.categoria || '',
-      contenuto: record.fields.Contenuto || record.fields.contenuto || '',
-      fileUrl: record.fields.File_URL || record.fields.file_url || '',
-      tags: parseCommaSeparatedString(record.fields.Tags || record.fields.tags || ''),
+      titolo: record.fields.Titolo || '',
+      categoria: record.fields.Categoria || '',
+      contenuto: record.fields.Contenuto || '',
+      fileUrl: record.fields.File_URL || '',
+      tags: parseCommaSeparatedString(record.fields.Tags || ''),
     }));
   } catch (error) {
     console.error('Errore nel recupero documentazione:', error);
-    throw error;
+    return [];
   }
 }
 
-// TESTIMONIANZE
+// TESTIMONIANZE - Nomi campi standard
 export async function getTestimonianze(): Promise<Testimonianza[]> {
   try {
     const data = await airtableRequest('/testimonianze');
     
     return data.records.map((record: any) => ({
       id: record.id,
-      patologia: record.fields.Patologia || record.fields.patologia || '',
-      trattamentoUsato: record.fields.Trattamento_Usato || record.fields.trattamento_usato || '',
-      durataTrattamento: record.fields.Durata_Trattamento || record.fields.durata_trattamento || '',
-      risultati: record.fields.Risultati || record.fields.risultati || '',
-      etaPaziente: record.fields.Eta_Paziente || record.fields.eta_paziente || '',
-      noteAnonime: record.fields.Note_Anonime || record.fields.note_anonime || '',
-      efficacia: safeParseInt(record.fields.Efficacia || record.fields.efficacia),
-      dataTestimonianza: record.fields.Data_Testimonianza || record.fields.data_testimonianza || '',
-      protocolloUtilizzato: record.fields.Protocollo_Utilizzato || record.fields.protocollo_utilizzato || '',
+      patologia: record.fields.Patologia || '',
+      trattamentoUsato: record.fields.Trattamento_Usato || '',
+      durataTrattamento: record.fields.Durata_Trattamento || '',
+      risultati: record.fields.Risultati || '',
+      etaPaziente: record.fields.Eta_Paziente || '',
+      noteAnonime: record.fields.Note_Anonime || '',
+      efficacia: safeParseInt(record.fields.Efficacia),
+      dataTestimonianza: record.fields.Data_Testimonianza || '',
+      protocolloUtilizzato: record.fields.Protocollo_Utilizzato || '',
     }));
   } catch (error) {
     console.error('Errore nel recupero testimonianze:', error);
-    throw error;
+    return [];
   }
 }
 
-// RICERCHE SCIENTIFICHE
+// RICERCHE SCIENTIFICHE - Basato sui campi visti negli screenshot
 export async function getRicerche(): Promise<RicercaScientifica[]> {
   try {
     const data = await airtableRequest('/ricerche');
     
     return data.records.map((record: any) => ({
       id: record.id,
-      titoloStudio: record.fields.Titolo_Studio || record.fields.titolo_studio || '',
-      sostanza: record.fields.Sostanza || record.fields.sostanza || '',
-      linkDoi: record.fields.Link_DOI || record.fields.link_doi || '',
-      riassunto: record.fields.Riassunto || record.fields.riassunto || '',
-      anno: record.fields.Anno || record.fields.anno || '',
-      rivista: record.fields.Rivista || record.fields.rivista || '',
-      importanza: safeParseInt(record.fields.Importanza || record.fields.importanza),
-      categoria: record.fields.Categoria || record.fields.categoria || '',
-      risultatiPrincipali: record.fields.Risultati_Principali || record.fields.risultati_principali || '',
+      titoloStudio: record.fields.Titolo || '',
+      sostanza: record.fields.Sostanza || '',
+      linkDoi: record.fields.Link_DOI || '',
+      riassunto: record.fields.Riassunto || '',
+      anno: record.fields.Anno || '',
+      rivista: record.fields.Rivista || '',
+      importanza: safeParseInt(record.fields.Importanza),
+      categoria: record.fields.Categoria || '',
+      risultatiPrincipali: record.fields.Risultati_Principali || '',
     }));
   } catch (error) {
     console.error('Errore nel recupero ricerche:', error);
-    throw error;
+    return [];
   }
 }
 
-// DOSAGGI
+// DOSAGGI - Basato sui campi visti negli screenshot
 export async function getDosaggi(): Promise<Dosaggio[]> {
   try {
     const data = await airtableRequest('/dosaggi');
     
     return data.records.map((record: any) => ({
       id: record.id,
-      patologia: record.fields.Patologia || record.fields.patologia || '',
-      pesoPaziente: record.fields.Peso_Paziente || record.fields.peso_paziente || '',
-      dosaggioCds: record.fields.Dosaggio_CDS || record.fields.dosaggio_cds || '',
-      dosaggioBluMetilene: record.fields.Dosaggio_Blu_Metilene || record.fields.dosaggio_blu_metilene || '',
-      formulaCalcolo: record.fields.Formula_Calcolo || record.fields.formula_calcolo || '',
-      noteSicurezza: record.fields.Note_Sicurezza || record.fields.note_sicurezza || '',
-      frequenza: record.fields.Frequenza || record.fields.frequenza || '',
-      durataMax: record.fields.Durata_Max || record.fields.durata_max || '',
-      protocolloRef: record.fields.Protocollo_Ref || record.fields.protocollo_ref || '',
+      patologia: record.fields.Patologia || '',
+      pesoPaziente: record.fields.Peso_Paziente || '',
+      dosaggioCds: record.fields.Dosaggio_CDS || '',
+      dosaggioBluMetilene: record.fields.Dosaggio_Blu_Metilene || '',
+      formulaCalcolo: record.fields.Formula_Calcolo || '',
+      noteSicurezza: record.fields.Note_Sicurezza || '',
+      frequenza: record.fields.Frequenza || '',
+      durataMax: record.fields.Durata_Max || '',
+      protocolloRef: record.fields.Protocollo_Ref || '',
     }));
   } catch (error) {
     console.error('Errore nel recupero dosaggi:', error);
-    throw error;
+    return [];
   }
 }
 
@@ -289,7 +296,7 @@ export async function searchAllData(query: string): Promise<{
   dosaggi: Dosaggio[];
 }> {
   try {
-    // Ricerca parallela in tutte le tabelle
+    // Ricerca parallela in tutte le tabelle con gestione errori
     const [protocolli, sintomi, documentazione, testimonianze, ricerche, faq, dosaggi] = await Promise.allSettled([
       getProtocolli(),
       getSintomi(),
@@ -441,29 +448,44 @@ export function formatDataForClaude(data: {
   return formattedData;
 }
 
-// Test connessione Airtable
+// Test connessione Airtable migliorato
 export async function checkAirtableConnection(): Promise<{
   connected: boolean;
   tablesAvailable: string[];
   errors: string[];
+  details: Record<string, any>;
 }> {
   const tables = ['sintomi', 'protocolli', 'FAQ', 'documentazione', 'testimonianze', 'ricerche', 'dosaggi'];
   const errors: string[] = [];
   const available: string[] = [];
+  const details: Record<string, any> = {};
+  
+  console.log('🔄 Testing Airtable connection...');
+  console.log('Base ID:', AIRTABLE_BASE_ID);
+  console.log('API Key exists:', !!AIRTABLE_API_KEY);
   
   for (const table of tables) {
     try {
-      await airtableRequest(`/${table}?maxRecords=1`);
+      console.log(`Testing table: ${table}`);
+      const response = await airtableRequest(`/${table}?maxRecords=1`);
       available.push(table);
+      details[table] = {
+        recordCount: response.records?.length || 0,
+        fields: response.records?.[0]?.fields ? Object.keys(response.records[0].fields) : []
+      };
+      console.log(`✅ ${table}: OK`);
     } catch (error) {
-      errors.push(`${table}: ${error instanceof Error ? error.message : 'Errore sconosciuto'}`);
+      const errorMsg = error instanceof Error ? error.message : 'Errore sconosciuto';
+      errors.push(`${table}: ${errorMsg}`);
+      console.log(`❌ ${table}: ${errorMsg}`);
     }
   }
   
   return {
     connected: available.length > 0,
     tablesAvailable: available,
-    errors
+    errors,
+    details
   };
 }
 
@@ -486,6 +508,7 @@ export async function getCachedData<T>(fetcher: () => Promise<T>, key: string): 
   } catch (error) {
     // Se abbiamo dati in cache anche scaduti, usiamoli come fallback
     if (cached) {
+      console.log(`Using stale cache for ${key}`);
       return cached.data;
     }
     throw error;
