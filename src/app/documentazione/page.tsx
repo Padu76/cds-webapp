@@ -124,6 +124,10 @@ const DocumentazionePage = () => {
   const [documents, setDocuments] = useState<DocumentData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [contentSearchQuery, setContentSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchMode, setSearchMode] = useState<'metadata' | 'content'>('metadata');
   const [selectedType, setSelectedType] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'name' | 'date' | 'size'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -140,7 +144,86 @@ const DocumentazionePage = () => {
     loadDocuments();
   }, []);
 
+  // Avvia processing batch documenti
+  const startBatchProcessing = async () => {
+    if (documents.length === 0) return;
+    
+    try {
+      const response = await fetch('/api/pdf-content', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          documents: documents.map(doc => ({ id: doc.id, name: doc.name }))
+        })
+      });
+      
+      if (response.ok) {
+        console.log('Processing batch avviato');
+      }
+    } catch (error) {
+      console.error('Errore avvio batch processing:', error);
+    }
+  };
+
+  // Ricerca nel contenuto
+  const searchInContent = async (query: string) => {
+    if (query.length < 3) {
+      setSearchResults([]);
+      return;
+    }
+    
+    setIsSearching(true);
+    try {
+      const response = await fetch('/api/pdf-content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          query,
+          documentIds: documents.map(doc => doc.id)
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setSearchResults(data.results || []);
+      }
+    } catch (error) {
+      console.error('Errore ricerca contenuto:', error);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Debounced search
   const loadDocuments = async () => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      // Prima verifica lo stato di Google Drive
+      const status = await checkGoogleDriveConnection();
+      setDriveStatus(status);
+
+      if (status.connected) {
+        // Carica solo lista documenti (titoli reali, nessun contenuto)
+        const docs = await loadDocumentsList();
+        setDocuments(docs);
+        
+        // Avvia processing batch in background dopo caricamento lista
+        setTimeout(() => {
+          startBatchProcessing();
+        }, 2000);
+      } else {
+        setError('Connessione a Google Drive non disponibile. Errori: ' + status.errors.join(', '));
+      }
+    } catch (error) {
+      console.error('Errore nel caricamento documenti:', error);
+      setError(error instanceof Error ? error.message : 'Errore sconosciuto nel caricamento');
+    } finally {
+      setLoading(false);
+    }
+  };
     setLoading(true);
     setError('');
     
@@ -164,7 +247,15 @@ const DocumentazionePage = () => {
     }
   };
 
-  // Filtri e ordinamento
+  // Gestione filtri basata su modalità ricerca
+  const getDisplayDocuments = () => {
+    if (searchMode === 'content') {
+      return []; // Nella modalità contenuto mostriamo solo searchResults
+    }
+    return filteredAndSortedDocuments;
+  };
+
+  const displayDocuments = getDisplayDocuments();
   const filteredAndSortedDocuments = useMemo(() => {
     let filtered = documents;
 
@@ -344,17 +435,64 @@ const DocumentazionePage = () => {
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Barra Filtri e Ricerca */}
         <div className="bg-white rounded-lg shadow-sm border p-6 mb-8">
+          {/* Tab di ricerca */}
+          <div className="flex items-center space-x-4 mb-4 border-b border-gray-200 pb-4">
+            <button
+              onClick={() => setSearchMode('metadata')}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                searchMode === 'metadata' 
+                  ? 'bg-emerald-100 text-emerald-700' 
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Ricerca per Nome
+            </button>
+            <button
+              onClick={() => setSearchMode('content')}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                searchMode === 'content' 
+                  ? 'bg-emerald-100 text-emerald-700' 
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Ricerca nel Contenuto
+            </button>
+            {searchMode === 'content' && (
+              <div className="text-xs text-gray-500 flex items-center space-x-1">
+                <Clock className="w-3 h-3" />
+                <span>Ricerca avanzata nei PDF</span>
+              </div>
+            )}
+          </div>
+          
           <div className="flex flex-col lg:flex-row gap-4">
             {/* Barra Ricerca */}
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Cerca nei documenti per nome, contenuto o keyword..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-              />
+              {searchMode === 'metadata' ? (
+                <input
+                  type="text"
+                  placeholder="Cerca documenti per nome file o tipo..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                />
+              ) : (
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Cerca nel contenuto: protocolli, dosaggi, patologie..."
+                    value={contentSearchQuery}
+                    onChange={(e) => setContentSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-10 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  />
+                  {isSearching && (
+                    <div className="absolute right-3 top-3">
+                      <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Filtri Tipo */}
@@ -464,7 +602,97 @@ const DocumentazionePage = () => {
         </div>
 
         {/* Lista/Grid Documenti */}
-        {filteredAndSortedDocuments.length === 0 ? (
+        {searchMode === 'content' && searchResults.length > 0 ? (
+          /* Risultati ricerca contenuto */
+          <div className="space-y-6">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <div className="flex items-center space-x-2 mb-2">
+                <Search className="w-5 h-5 text-blue-600" />
+                <h3 className="font-semibold text-blue-800">Ricerca nel Contenuto</h3>
+              </div>
+              <p className="text-blue-700 text-sm">
+                Trovati {searchResults.length} risultati per "{contentSearchQuery}"
+              </p>
+            </div>
+            
+            {searchResults.map((result, index) => (
+              <div key={index} className="bg-white rounded-lg shadow-sm border p-6">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                      {result.document.name}
+                    </h3>
+                    <div className="flex items-center space-x-4 text-sm text-gray-600 mb-3">
+                      <span>Score: {result.matchScore}</span>
+                      <span>Processato: {new Date(result.document.lastProcessed).toLocaleDateString('it-IT')}</span>
+                    </div>
+                    
+                    {/* Keywords trovate */}
+                    <div className="flex flex-wrap gap-1 mb-4">
+                      {result.document.keywords.slice(0, 8).map((keyword, idx) => (
+                        <span
+                          key={idx}
+                          className={`px-2 py-1 text-xs rounded-md ${
+                            keyword.toLowerCase().includes(contentSearchQuery.toLowerCase())
+                              ? 'bg-yellow-100 text-yellow-700 font-medium'
+                              : 'bg-gray-100 text-gray-700'
+                          }`}
+                        >
+                          {keyword}
+                        </span>
+                      ))}
+                    </div>
+                    
+                    {/* Sezioni rilevanti */}
+                    <div className="space-y-2">
+                      <h4 className="font-medium text-gray-800">Contenuto rilevante:</h4>
+                      {result.relevantSections.map((section, sIdx) => (
+                        <div key={sIdx} className="bg-gray-50 p-3 rounded text-sm">
+                          <p className="text-gray-700">
+                            ...{section}...
+                          </p>
+                        </div>
+                      ))}
+                      
+                      {/* Preview testo completo */}
+                      <details className="mt-3">
+                        <summary className="cursor-pointer text-sm text-emerald-600 hover:text-emerald-700">
+                          Mostra anteprima completa
+                        </summary>
+                        <div className="mt-2 p-3 bg-gray-50 rounded text-sm text-gray-700 max-h-40 overflow-y-auto">
+                          {result.document.previewText}
+                        </div>
+                      </details>
+                    </div>
+                  </div>
+                  
+                  <a
+                    href={`#`} // URL del documento originale non disponibile nei risultati ricerca
+                    className="ml-4 flex items-center space-x-2 text-emerald-600 hover:text-emerald-700 text-sm font-medium transition-colors"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span>Apri</span>
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : searchMode === 'content' && contentSearchQuery.length >= 3 && searchResults.length === 0 && !isSearching ? (
+          /* Nessun risultato ricerca contenuto */
+          <div className="bg-white rounded-lg shadow-sm border p-12 text-center">
+            <Search className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Nessun risultato nel contenuto</h3>
+            <p className="text-gray-600 mb-4">
+              La ricerca "{contentSearchQuery}" non ha prodotto risultati. I documenti potrebbero essere ancora in elaborazione.
+            </p>
+            <button
+              onClick={() => setContentSearchQuery('')}
+              className="text-emerald-600 hover:text-emerald-700 font-medium"
+            >
+              Cancella ricerca
+            </button>
+          </div>
+        ) : filteredAndSortedDocuments.length === 0 ? (
           <div className="bg-white rounded-lg shadow-sm border p-12 text-center">
             <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Nessun documento trovato</h3>
@@ -493,9 +721,9 @@ const DocumentazionePage = () => {
               </button>
             )}
           </div>
-        ) : (
+        ) : searchMode === 'metadata' && displayDocuments.length > 0 ? (
           <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' : 'space-y-4'}>
-            {filteredAndSortedDocuments.map((doc) => (
+            {displayDocuments.map((doc) => (
               <div key={doc.id} className={`bg-white rounded-lg shadow-sm border hover:shadow-md transition-shadow ${
                 viewMode === 'list' ? 'flex items-center p-4' : 'p-6'
               }`}>
@@ -607,8 +835,58 @@ const DocumentazionePage = () => {
                     </div>
                   </>
                 )}
+                  )}
+                )}
               </div>
             ))}
+          </div>
+        ) : searchMode === 'metadata' ? (
+          /* Nessun risultato ricerca metadata */
+          <div className="bg-white rounded-lg shadow-sm border p-12 text-center">
+            <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Nessun documento trovato</h3>
+            <p className="text-gray-600 mb-4">
+              {searchQuery ? 
+                `Nessun risultato per "${searchQuery}". Prova con altri termini di ricerca.` :
+                documents.length === 0 ?
+                'Impossibile caricare i documenti. Verifica la connessione a Google Drive.' :
+                'Non ci sono documenti che corrispondono ai filtri selezionati.'
+              }
+            </p>
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="text-emerald-600 hover:text-emerald-700 font-medium"
+              >
+                Cancella ricerca
+              </button>
+            )}
+            {documents.length === 0 && (
+              <button
+                onClick={loadDocuments}
+                className="ml-4 text-emerald-600 hover:text-emerald-700 font-medium"
+              >
+                Riprova caricamento
+              </button>
+            )}
+          </div>
+        ) : (
+          /* Modalità ricerca contenuto senza query */
+          <div className="bg-white rounded-lg shadow-sm border p-12 text-center">
+            <Search className="w-16 h-16 text-emerald-300 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">Ricerca Avanzata nel Contenuto</h3>
+            <p className="text-gray-600 mb-4">
+              Inserisci almeno 3 caratteri per cercare all'interno dei documenti PDF:
+            </p>
+            <div className="text-sm text-gray-500 space-y-1">
+              <p>• Protocolli specifici (es: "dosaggio artrite")</p>
+              <p>• Sostanze attive (es: "blu di metilene")</p>
+              <p>• Patologie (es: "alzheimer", "candida")</p>
+              <p>• Controindicazioni e sicurezza</p>
+            </div>
+            <div className="mt-6 text-xs text-gray-400">
+              I documenti vengono processati in background per la ricerca nel contenuto
+            </div>
           </div>
         )}
 
