@@ -108,7 +108,7 @@ const categoryConfig = {
     buttonColor: 'bg-gray-600 hover:bg-gray-700',
     description: 'Altri protocolli terapeutici'
   }
-};
+} as const;
 
 // Funzione per chiamate Airtable
 async function airtableRequest(endpoint: string, options: RequestInit = {}): Promise<any> {
@@ -467,21 +467,21 @@ const ProtocolliPage = () => {
         {/* Category Description */}
         {selectedCategory !== 'TUTTI' && (
           <div className={`mb-8 p-6 rounded-xl border-2 ${
-            categoryConfig[selectedCategory as keyof typeof categoryConfig].bgColor
-          } ${categoryConfig[selectedCategory as keyof typeof categoryConfig].borderColor}`}>
+            categoryConfig[selectedCategory].bgColor
+          } ${categoryConfig[selectedCategory].borderColor}`}>
             <div className="flex items-center space-x-3">
-              <div className={`p-3 rounded-full ${categoryConfig[selectedCategory as keyof typeof categoryConfig].buttonColor}`}>
-                {React.createElement(categoryConfig[selectedCategory as keyof typeof categoryConfig].icon, {
+              <div className={`p-3 rounded-full ${categoryConfig[selectedCategory].buttonColor}`}>
+                {React.createElement(categoryConfig[selectedCategory].icon, {
                   size: 24,
                   className: "text-white"
                 })}
               </div>
               <div>
-                <h2 className={`text-xl font-bold ${categoryConfig[selectedCategory as keyof typeof categoryConfig].textColor}`}>
-                  {categoryConfig[selectedCategory as keyof typeof categoryConfig].fullName}
+                <h2 className={`text-xl font-bold ${categoryConfig[selectedCategory].textColor}`}>
+                  {categoryConfig[selectedCategory].fullName}
                 </h2>
-                <p className={`${categoryConfig[selectedCategory as keyof typeof categoryConfig].textColor} opacity-80`}>
-                  {categoryConfig[selectedCategory as keyof typeof categoryConfig].description}
+                <p className={`${categoryConfig[selectedCategory].textColor} opacity-80`}>
+                  {categoryConfig[selectedCategory].description}
                 </p>
               </div>
             </div>
@@ -577,7 +577,7 @@ const ProtocolliPage = () => {
             <div className="text-center py-12">
               <div className="mb-4">
                 {selectedCategory !== 'TUTTI' ? (
-                  React.createElement(categoryConfig[selectedCategory as keyof typeof categoryConfig].icon, {
+                  React.createElement(categoryConfig[selectedCategory].icon, {
                     size: 48,
                     className: `mx-auto text-gray-400 mb-4`
                   })
@@ -590,7 +590,7 @@ const ProtocolliPage = () => {
               </h3>
               <p className="text-gray-600 dark:text-gray-400">
                 {selectedCategory !== 'TUTTI' 
-                  ? `Non ci sono protocolli nella categoria ${categoryConfig[selectedCategory as keyof typeof categoryConfig].label}`
+                  ? `Non ci sono protocolli nella categoria ${categoryConfig[selectedCategory].label}`
                   : 'Prova a modificare i filtri di ricerca'
                 }
               </p>
@@ -711,9 +711,9 @@ const ProtocolliPage = () => {
               {protocols.length} protocolli terapeutici categorizzati automaticamente per CDS, Blu di Metilene e trattamenti ibridi
             </p>
             <div className="flex flex-wrap justify-center gap-4 text-sm">
-              {(Object.keys(categoryStats) as Array<keyof typeof categoryStats>).map((catKey) => {
+              {(Object.keys(categoryConfig) as Array<keyof typeof categoryConfig>).map((catKey) => {
                 const config = categoryConfig[catKey];
-                const count = categoryStats[catKey];
+                const count = categoryStats[catKey] || 0;
                 return (
                   <div key={catKey} className="flex items-center space-x-1">
                     {React.createElement(config.icon, { size: 16 })}
